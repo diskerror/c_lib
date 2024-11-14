@@ -3,10 +3,10 @@
 #define RAW_FILELIST_H
 #pragma once
 
-// #include <string>
-// #include <vector>
-// #include <boost/filesystem.hpp>
-// #include <boost/regex.hpp>
+#include <string>
+#include <vector>
+#include <boost/filesystem.hpp>
+#include <boost/regex.hpp>
 
 using namespace std;
 using namespace boost;
@@ -17,7 +17,7 @@ class FileList
 	boost::regex	mSuffix;
 	
 public:
-			FileList(const string &suf);
+			FileList(const string &suf = "");
 			~FileList();
 	
 	vector<string>	Get(string& input);

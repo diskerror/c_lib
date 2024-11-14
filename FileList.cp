@@ -6,21 +6,21 @@
  *
  */
 
-// #include <iterator>
-// #include <fstream>
-// #include <string>
-// #include <vector>
-// #include "boost/filesystem.hpp"
-// #include <boost/regex.hpp>
+#include <iterator>
+#include <fstream>
+//#include <string>
+//#include <vector>
+//#include "boost/filesystem.hpp"
+//#include <boost/regex.hpp>
 
 #include "FileList.h"
 
 using namespace std;
 namespace fs = boost::filesystem;
 
-FileList::FileList(const string &suf="")
+FileList::FileList(const string &suf)
 {
-	cout << "Initializing File List." << endl;
+//	cout << "Initializing File List." << endl;
 	
 	mSuffix.assign(suf+"$", boost::regex_constants::perl|boost::regex_constants::optimize);
 }
@@ -31,7 +31,7 @@ FileList::~FileList()
 
 vector<string> FileList::Get(string& input)
 {
-	cout << "FileList retreiving list of files." << endl;
+//	cout << "FileList retreiving list of files." << endl;
 	
 	if( !mList.empty() )
 		mList.clear();		//	does not release space previously used, just the values
