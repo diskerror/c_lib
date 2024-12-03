@@ -51,7 +51,7 @@ void clappFiles::SetOptionStruct(void)
 	static option	longOptInit[] =
 	{
 		/* { name  has_arg  *flag  val } */
-		{"suffix", required_argument, NULL, NULL},	//	suffix to add to new files without explicit file name given
+		{"suffix", required_argument, 0, 0},	//	suffix to add to new files without explicit file name given
 		{"recursive", no_argument, NULL, 'R'},		//	process directories recursively
 		{"delete", no_argument, NULL, 'D'},			//	delete/replace destination file if it already exists
 		{"update", no_argument, NULL, 'U'},			//	process and update current file
@@ -316,7 +316,7 @@ void clappFiles::Run(void)
 	//	if transforming from one file to another
 	if (mFile2File)
 	{
-		PrepFilePair(&(string)mArgv[0], &(string)mArgv[1]);
+		PrepFilePair((string)mArgv[0], (string)mArgv[1]);
 		return;
 	}
 	
@@ -516,11 +516,11 @@ bool clappFiles::SkipFile(string *inFile)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-void clappFiles::PrepFilePair(string* inSrc, string* inDest)
+void clappFiles::PrepFilePair(string inSrc, string inDest)
 {
 	char	pathSrc[PATH_MAX];
 	
-	if( !::realpath(inSrc->c_str(), pathSrc) )
+	if( !::realpath(inSrc.c_str(), pathSrc) )
 	{
 		cerr << "Couldn't resolve path (clappFiles::PrepFilePair " << __LINE__ << "):\n"
 				<< pathSrc << "\n";
@@ -529,7 +529,7 @@ void clappFiles::PrepFilePair(string* inSrc, string* inDest)
 	}
 	
 	//	Create path to destination file. Called if even if not needed.
-	BuildPath( ::dirname(inDest->c_str()) );	//	BuildPath throws it's own errors.
+	BuildPath( ::dirname(inDest.c_str()) );	//	BuildPath throws it's own errors.
 	
 	struct stat statSrc, statDest;
 	
@@ -542,7 +542,7 @@ void clappFiles::PrepFilePair(string* inSrc, string* inDest)
 		exit(errno);
 	}
 	
-	::stat(inDest->c_str(), &statDest);
+	::stat(inDest.c_str(), &statDest);
 	if(	errno == ENOENT )					//	if dest doesn't exist then just create a new file
 	{
 		Process( &(string)pathSrc, inDest );

@@ -11,6 +11,8 @@
 using namespace std;
 using namespace boost;
 
+namespace fs = boost::filesystem;
+
 class FileList
 {
 	vector<string>	mList;
@@ -21,7 +23,7 @@ public:
 			~FileList();
 	
 	vector<string>	Get(string& input);
-	vector<string>	Get(filesystem::path& input);
+	vector<string>	Get(fs::path& input);
 	
 	size_t		ListSize();
 	
@@ -37,7 +39,7 @@ public:
 	string		operator()( size_t pos );
 	
 protected:
-	void	DoDirectory(filesystem::path& p);
+	void	DoDirectory(fs::path& p);
 
 };
 

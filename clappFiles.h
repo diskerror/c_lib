@@ -56,7 +56,7 @@ protected:
 					//	initiates forking, if needed (to be programmed later, ALSO look into threads)
 					//		Forking handled here becuse these cleanup the
 					//		possible temp files used in Process()
-	virtual void	PrepFilePair(std::string* inSrc, std::string* inDest);
+	virtual void	PrepFilePair(std::string inSrc, std::string inDest);
 	
 					//	Create a temporary destination file when we know a
 					//		destination file already exists.
