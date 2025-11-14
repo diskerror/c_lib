@@ -2,11 +2,9 @@
 	WAVE file format.
 */
 
-#ifndef WAVE_H
-#define WAVE_H
+#ifndef DISKERROR_WAVE_H
+#define DISKERROR_WAVE_H
 #pragma once
-
-#include <exception>
 
 #include <boost/endian.hpp>
 
@@ -85,7 +83,7 @@ typedef struct HeaderChunk : ChunkID
 //	JUNK Chunk:
 //		id = 'JUNK'
 //		size = size of data
-//		data[] = ? can be anything
+//		data[] =  <anything>
 
 //	Format Chunk:
 //		id = 'fmt '
@@ -186,4 +184,4 @@ typedef struct Size64Data
 } Size64Data_t;
 
 
-#endif /* WAVE_H */
+#endif /* DISKERROR_WAVE_H */
