@@ -2,22 +2,20 @@
 SHELL = /bin/bash
 
 #	Compiler
-CP = clang++ -std=c++23
+CXX = clang++ -c -std=c++23 -fPIC
 
 #	Boost version
-BV = 1.81
+BV = 1.87
 
-CX = $(CP) -Wall -Winvalid-pch \
+CXXFLAGS = -Wall -Winvalid-pch -Wno-macro-redefined \
 	-I/opt/local/libexec/boost/$(BV)/include
 
-# XCODE=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
-
-SRCS=$(basename $(wildcard *.cp))
-OBJS=$(addsuffix .o, $(SRCS))
+SRCS = $(basename $(wildcard *.cp))
+OBJS = $(addsuffix .o, $(SRCS))
 
 all: $(OBJS)
 $(OBJS): %.o: %.cp %.h Makefile
-	$(CX) -O2 -x c++-header $< -o $@
+	$(CXX) -x c++-header $(CXXFLAGS) $ -O3 $< -o $@
 
 .PHONY: clean all
 clean:
