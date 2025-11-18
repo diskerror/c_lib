@@ -2,21 +2,11 @@
 // Created by Reid Woodbury on 11/15/24.
 //
 
-/**
- * Designed with guidence from:
- * The Scientist and Engineer's Guide to
- * Digital Signal Processing
- * (Second Edition)
- * by Steven W. Smith
- */
-
 #ifndef DISKERROR_VECTORMATH_H
 #define DISKERROR_VECTORMATH_H
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
-#include <numbers>
 #include <random>
 #include <vector>
 
@@ -24,7 +14,7 @@ namespace Diskerror {
 
 /**
  * Adds math functions to std::vector<> like valarray.
- * This will focus on the way I've always wanted to process off-line audio data.
+ * This will focus on processing off-line audio data.
  * @tparam T
  */
 template <typename T>
