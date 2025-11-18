@@ -26,42 +26,42 @@
 
 #include <string>
 
-struct  option;  //  forward declaration
+struct option; //  forward declaration
 
 class clapp {
 public:
-                    clapp() : mArgc(0), mArgv(NULL), mProgName("") {}
-    virtual         ~clapp() {}
+	clapp() /*: mArgc(0), mArgv(NULL), mProgName("")*/ {}
+	virtual ~clapp() {}
 
-    virtual void    Setup(int argc, char * argv[]);
-    virtual void    Run(void) = 0;
+	virtual void Setup(int argc, char* argv[]);
+	virtual void Run(void) = 0;
 
 protected:
-    virtual void    SetOptionStruct(void);
-    virtual void    InitPrefs(void) {}
-    virtual void    HandleArgs(int argc, char * argv[]);
-    virtual bool    HandleArg(int);
-    virtual bool    HandleLongIndex(int);
+	virtual void SetOptionStruct(void);
+	virtual void InitPrefs(void) {}
+	virtual void HandleArgs(int argc, char* argv[]);
+	virtual bool HandleArg(int);
+	virtual bool HandleLongIndex(int);
 
-                    //  messages
-    virtual void    MessageUsage(void);
-    virtual void    MessageHelp(void);
-    virtual void    MessageMissingOption(void);
-    virtual void    MessageAmbiguousOption(void);
-    virtual void    MessageBadLongOptIndex(int longindex);
+	//  messages
+	virtual void MessageUsage(void);
+	virtual void MessageHelp(void);
+	virtual void MessageMissingOption(void);
+	virtual void MessageAmbiguousOption(void);
+	virtual void MessageBadLongOptIndex(int longindex);
 
-    //  Data passed in to program.
-    int         mArgc;
-    char**      mArgv;
-    std::string mProgName;
+	//  Data passed in to program.
+	int         mArgc     = 0;
+	char**      mArgv     = nullptr;
+	std::string mProgName = "";
 
-    //  Hard programmed options.
-    option      *mLongOpts;
-    std::string mShortOpts;
+	//  Hard programmed options.
+	option*     mLongOpts;
+	std::string mShortOpts;
 
 private:
-                clapp(const clapp&);
-    clapp&      operator=(const clapp&);
+	clapp(const clapp&);
+	clapp& operator=(const clapp&);
 };
 
 
