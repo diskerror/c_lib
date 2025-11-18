@@ -1,0 +1,172 @@
+//
+// Created by Reid Woodbury.
+//
+
+#ifndef DISKERROR_AUDIOFILE_H
+#define DISKERROR_AUDIOFILE_H
+
+
+#include <filesystem>
+#include <fstream>
+#include <vector>
+
+#include <boost/cstdfloat.hpp>
+#include <boost/endian/arithmetic.hpp>
+
+#include "AIFF.h"
+#include "WAVE.h"
+
+namespace Diskerror {
+
+using namespace std;
+using namespace boost;
+using namespace boost::endian;
+
+//	Currently only WAVE and AIFF (AIFC) is supported.
+//	RIFF or RF64 is determined by total file size.
+typedef enum {
+	BASE_TYPE_UNKNOWN = 0,
+	BASE_TYPE_WAVE, //	RIFF or RF64: WAVE, little-endian (and BWF)
+	BASE_TYPE_AIFF, //	FORM: AIFF or AIFC, big-endian
+	BASE_TYPE_WAVX, //	RIFX: WAVE, big-endian
+	BASE_TYPE_8SVX, //	FORM: 8SVX, Amiga IFF 8-bit, big-endian
+	BASE_TYPE_MAUD  //	FORM: MAUD, Amiga IFF multi-channel, big-endian
+} baseAudioFileType_t;
+
+typedef struct {
+	fourcc_t id;
+	//	RIFF or RF64: WAVE, little-endian (and BWF)
+	//	FORM: AIFF or AIFC, big-endian (except 'swot')
+	union {
+		little_uint32_t lSize;
+		big_uint32_t    bSize;
+	};
+
+	fourcc_t type;
+} audioFileHeader_t;
+
+typedef union {
+	struct {
+		fourcc_t id;
+
+		union {
+			little_uint32_t lSize;
+			big_uint32_t    bSize;
+		};
+
+		char rawData[];
+	};
+
+	fmt_t  fmt_; //	WAVE format
+	COMM_t COMM; //	AIFF format
+
+//	additional AIFF chunks
+	//	minf.size==16?
+	SSND_t     SSND;
+	aChunk_t   elm1; //	elm1.size==426, filler like JUNK?
+	MARK_t     MARK;
+	INST_t     INST;
+	aiffData_t MIDI;
+	aiffData_t AESD;
+	APPL_t     APPL;
+	COMT_t     COMT;
+	text_t     NAME;
+	text_t     AUTH;
+	text_t     copy;
+	text_t     ANNO;
+	SAXL_t     SAXL;
+
+//	additional WAVE chunks
+	waveData_t data;
+	ds64_t     ds64;
+	waveData_t JUNK;
+	bext_t     bext;
+	big1_t     big1;
+	fact_t     fact;
+	cue_t      cue_;
+	plst_t     plst;
+	listHead_t list;
+	smpl_t     smpl;
+	inst_t     inst;
+} chunks_t;
+
+//	Defined in AudioFile.cp
+class chunkVector : public vector<chunks_t*> {
+public:
+	~chunkVector(); //	Destructor releases all pointers.
+	uint32_t getHeaderSize(bool is_littleEndian);
+};
+
+/**
+ *	class AudioFile
+ */
+class AudioFile {
+	baseAudioFileType_t baseType = BASE_TYPE_UNKNOWN;
+	fstream             fileAccess;
+	audioFileHeader_t   header = {0, {0}, 0};
+	chunkVector         chunk;
+	chunks_t*           format;
+
+	int64_t  fileSize      = -1; // size of FORM or RF64 block (file size - 8)
+	uint32_t dataStart     = 0;  // first byte of sound data in file
+	int64_t  dataSize      = -1; // size of data chunk
+	int16_t  bytesPerFrame = -1;
+	int64_t  frameCount    = -1; // sample count of fact chunk (frames)
+
+	int64_t dataWritePos = 0;
+
+	size_t getAllChunksSize();
+
+public:
+	// Constructors
+	//	Use for opening an existing file.
+	//	Throws error if file does not exist.
+	explicit AudioFile(filesystem::path fPath);
+
+	//	Use for creating a new file.
+	//	Throws error if file already exists.
+	explicit AudioFile(
+			filesystem::path    fPath,
+			uint32_t            sampleRate,
+			uint16_t            sampleSize,
+			uint16_t            numChan,
+			big_uint32_t        encoding,
+			baseAudioFileType_t baseType
+		);
+
+	// Destructor
+	~AudioFile() { delete this->format; };
+
+	const filesystem::path filePath;
+
+	bool is_pcm() const;
+	bool is_ieee() const;
+	bool is_littleEndian() const;
+
+	uint32_t getFormatSize() const;
+	uint16_t getNumChannels() const;
+	uint32_t getSampleRate();
+	uint16_t getBitsPerSample() const;
+	int64_t  getNumFrames() const;
+	int64_t  getDataSize() const;
+	fourcc_t getDataEncoding() const;
+
+	float64_t getSampleMaxMagnitude() const;
+
+	unsigned char* ReadAllData();
+	void           WriteAllData(const unsigned char*);
+
+	uint16_t        addChunk(chunks_t*);
+	const chunks_t* getChunk(uint16_t);
+
+	void writeUpdatedHeader();
+	void writeNewHeader();
+
+	void     seekp_data(uint64_t, ios_base::seekdir);
+	uint64_t tellp_data();
+	void     write(const char*, uint64_t);
+};
+
+} // namespace Diskerror
+
+#endif // DISKERROR_AUDIOFILE_H
