@@ -23,7 +23,7 @@ using namespace boost::endian;
  *	class AudioSamples
  */
 class AudioSamples {
-	AudioFile* audioFile;
+	AudioFile &audioFile;
 
 	static void ReverseCopy4Bytes(unsigned char*, const unsigned char*);
 
@@ -31,10 +31,10 @@ class AudioSamples {
 
 public:
 	// Constructor
-	explicit AudioSamples(AudioFile*); //	Needs pointer to Diskerror::AudioFile
+	explicit AudioSamples(AudioFile&); //	Needs pointer to Diskerror::AudioFile
 
 	// Destructor
-	~AudioSamples() = default;
+	~AudioSamples();
 
 
 	// Exposing these members because of their useful methods.

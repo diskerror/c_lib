@@ -281,6 +281,11 @@ AudioFile::AudioFile(
 	}
 }
 
+AudioFile::~AudioFile() {
+	delete this->format;
+	RAW_DEBUG
+};
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 bool AudioFile::is_pcm() const {
@@ -292,7 +297,7 @@ bool AudioFile::is_pcm() const {
 
 bool AudioFile::is_ieee() const {
 	auto type = this->getDataEncoding();
-	if (type == 3 || type == 'fl32')
+	if (type == '0003' || type == 'fl32')
 		return true;
 	return false;
 };

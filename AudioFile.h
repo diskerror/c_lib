@@ -135,7 +135,7 @@ public:
 		);
 
 	// Destructor
-	~AudioFile() { delete this->format; };
+	~AudioFile();
 
 	const filesystem::path filePath;
 
