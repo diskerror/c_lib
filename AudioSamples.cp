@@ -7,6 +7,7 @@
 #include <boost/cstdfloat.hpp>
 #include <boost/endian.hpp>
 #include <functional>
+#include <iostream>
 #include <random>
 #include <stdexcept>
 
@@ -15,6 +16,11 @@ namespace Diskerror {
 using namespace std;
 using namespace boost;
 using namespace boost::endian;
+
+#ifndef RAW_DEBUG
+#define RAW_DEBUG
+//#define RAW_DEBUG std::cout << __FILE__ << ":" << __LINE__ << " " << __func__ << std::endl;
+#endif
 
 
 AudioSamples::AudioSamples(AudioFile* file) { this->audioFile = file; }
@@ -184,7 +190,7 @@ void AudioSamples::Normalize() { this->samples.normalize_mag(GetSampleMaxMagnitu
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //	Assumes data will be the same size as the buffer that was read.
-void AudioSamples::WriteSamples(const bool do_dither = true) {
+void AudioSamples::WriteSamples(const bool do_dither) {
 	this->assertDataFormat();
 	auto dataBlock = static_cast<unsigned char*>(calloc(this->audioFile->getDataSize(), 1));
 

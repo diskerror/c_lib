@@ -121,7 +121,7 @@ public:
 	// Constructors
 	//	Use for opening an existing file.
 	//	Throws error if file does not exist.
-	explicit AudioFile(filesystem::path fPath);
+	explicit AudioFile(filesystem::path);
 
 	//	Use for creating a new file.
 	//	Throws error if file already exists.
@@ -139,9 +139,9 @@ public:
 
 	const filesystem::path filePath;
 
-	bool is_pcm() const;
-	bool is_ieee() const;
-	bool is_littleEndian() const;
+	[[nodiscard]] bool is_pcm() const;
+	[[nodiscard]] bool is_ieee() const;
+	[[nodiscard]] bool is_littleEndian() const;
 
 	uint32_t getFormatSize() const;
 	uint16_t getNumChannels() const;

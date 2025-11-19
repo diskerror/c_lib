@@ -31,7 +31,7 @@ class AudioSamples {
 
 public:
 	// Constructor
-	explicit AudioSamples(AudioFile*);	//	Needs pointer to Diskerror::AudioFile
+	explicit AudioSamples(AudioFile*); //	Needs pointer to Diskerror::AudioFile
 
 	// Destructor
 	~AudioSamples() = default;
@@ -48,9 +48,9 @@ public:
 
 	static float32_t Dither();
 
-	void WriteSamples(bool);	//	True == do dither on converstion.
+	void WriteSamples(bool do_dither = true); //	True == do dither on converstion.
 
-	float32_t& operator[](uint64_t);	//	Returns sample at index.
+	float32_t& operator[](uint64_t); //	Returns sample at index.
 };
 
 

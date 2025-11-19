@@ -14,6 +14,11 @@
 
 namespace Diskerror {
 
+#ifndef RAW_DEBUG
+#define RAW_DEBUG
+// #define RAW_DEBUG std::cout << __FILE__ << ":" << __LINE__ << " " << __func__ << std::endl;
+#endif
+
 using namespace std;
 using namespace boost;
 using namespace boost::endian;
@@ -24,10 +29,10 @@ inline string fourcc2str(fourcc_t fcc) {
 }
 
 inline fourcc_t short2hexFourcc(const uint16_t in) {
-	string     s = format("%04x", in);
-	fourcc_t   fcc;
-	const auto cp = reinterpret_cast<char*>(&fcc);
-	for (uint16_t i = 0; i < 4; i++) cp[i] = s[i];
+	string   s = format("{:04X}", in);
+	fourcc_t fcc;
+	auto     fccp = reinterpret_cast<char*>(&fcc);
+	for (uint16_t i = 0; i < 4; i++) fccp[i] = s.c_str()[i];
 	return fcc;
 }
 
@@ -124,13 +129,12 @@ AudioFile::AudioFile(filesystem::path fPath) : filePath(std::move(fPath)) {
 	//	Look for Chunks and store appropriately.
 	audioFileHeader_t       chunkExam;
 	const fstream::pos_type examSize = 8; //	Only load and use the first two fields of chunkExam.
-	auto                    isLittle = this->is_littleEndian();
 	char*                   chunkPtr;
 
 	do {
 		this->fileAccess.read(reinterpret_cast<char*>(&chunkExam), examSize);
 		this->fileAccess.seekg(-examSize, ios_base::cur);
-		fstream::pos_type wholeChunkSize = (isLittle ? chunkExam.lSize : chunkExam.bSize) + examSize;
+		fstream::pos_type wholeChunkSize = (this->is_littleEndian() ? chunkExam.lSize : chunkExam.bSize) + examSize;
 
 		switch (chunkExam.id) {
 			case 'data':
@@ -281,7 +285,7 @@ AudioFile::AudioFile(
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 bool AudioFile::is_pcm() const {
 	auto type = this->getDataEncoding();
-	if (type == 1 || type == 'PCM ')
+	if (type == '0001' || type == 'PCM ')
 		return true;
 	return false;
 }
