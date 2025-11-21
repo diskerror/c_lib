@@ -349,6 +349,8 @@ uint16_t AudioFile::getBitsPerSample() const {
 
 int64_t AudioFile::getNumFrames() const { return this->frameCount; };
 
+int64_t AudioFile::getNumSamples() const { return this->frameCount * this->getNumChannels(); };
+
 int64_t AudioFile::getDataSize() const { return this->dataSize; };
 
 fourcc_t AudioFile::getDataEncoding() const {

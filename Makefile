@@ -3,7 +3,7 @@ SHELL = /bin/bash
 
 #	Compiler
 #	On MacOS g++: aliased to /opt/local/bin/g++-mp-15
-CXX = g++ -g -c -std=c++23 -fPIC -Wall -Wextra -Winvalid-pch -Wno-macro-redefined
+CXX = g++ -c -std=c++23 -fPIC -Wall -Wextra -Winvalid-pch -Wno-macro-redefined
 
 CXXFLAGS = -I/opt/local/libexec/gcc15/libc++/include -I/opt/local/libexec/boost/1.87/include
 

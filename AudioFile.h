@@ -154,6 +154,7 @@ public:
 	uint32_t               getSampleRate();
 	[[nodiscard]] uint16_t getBitsPerSample() const;
 	[[nodiscard]] int64_t  getNumFrames() const;
+	[[nodiscard]] int64_t  getNumSamples() const;
 	[[nodiscard]] int64_t  getDataSize() const;
 	[[nodiscard]] fourcc_t getDataEncoding() const;
 
