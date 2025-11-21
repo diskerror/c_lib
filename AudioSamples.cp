@@ -17,64 +17,51 @@ using namespace std;
 using namespace boost;
 using namespace boost::endian;
 
-#ifndef RAW_DEBUG
-#define RAW_DEBUG
-// #define RAW_DEBUG std::cout << __FILE__ << ":" << __LINE__ << " " << __func__ << std::endl;
-#endif
 
-
-AudioSamples::AudioSamples(AudioFile& file) : audioFile(file) {}
+AudioSamples::AudioSamples(const char* aFile) : AudioFile(aFile) {}
 
 void AudioSamples::assertDataFormat() const {
-	if (!this->audioFile->is_pcm() && !this->audioFile->is_ieee()) {
+	if (!this->is_pcm() && !this->is_ieee()) {
 		throw runtime_error(
 			"ERROR: This method only handles PCM (integer) or IEEE (32-bit float) data in audio files.");
 	}
 
-	if (this->audioFile.is_pcm() && this->audioFile.getBitsPerSample() >= 32) {
+	if (this->is_pcm() && this->getBitsPerSample() >= 32) {
 		throw out_of_range(
 			"ERROR: Cannot convert 32-bit integer (PCM) data to 32-bit float without loss of resolution.");
 	}
 
-	if (this->audioFile.getBitsPerSample() > 32) {
+	if (this->getBitsPerSample() > 32) {
 		throw out_of_range("ERROR: Cannot read data without loss of resolution.");
 	}
 }
 
-AudioSamples::~AudioSamples() {
-	RAW_DEBUG
-};
-
 
 
 //	Maximum value storable == 2^(nBits-1) - 1
-float32_t AudioSamples::GetSampleMaxMagnitude() const {
-	if (this->audioFile.is_ieee())
+float64_t AudioSamples::getSampleMaxMagnitude() const {
+	if (this->is_ieee())
 		return 1.0;
 
-	switch (static_cast<int16_t>(ceil(this->audioFile.getBitsPerSample() / 8.0))) {
+	// return pow(2.0, this->audioFile->getBitsPerSample() - 1) - 1;
+
+	switch (static_cast<int16_t>(ceil(this->getBitsPerSample() / 8.0))) {
 		case 1:
-			return numeric_limits<native_int8_t>::max();
+			return 127.0;
 
 		case 2:
-			return numeric_limits<native_int16_t>::max();
+			return 32767.0;
 
 		case 3:
-			return numeric_limits<native_int24_t>::max();
+			return 8388607.0;
 
 		case 4:
-			return numeric_limits<native_int32_t>::max();
+			return 2147483648.0;
 	}
 
-	return numeric_limits<float32_t>::quiet_NaN();
-}
+	throw runtime_error("Bad number of bits per sample	.");
 
-
-void AudioSamples::ReverseCopy4Bytes(unsigned char* dest, const unsigned char* src) {
-	dest[0] = src[3];
-	dest[1] = src[2];
-	dest[2] = src[1];
-	dest[3] = src[0];
+	// return numeric_limits<float64_t>::quiet_NaN();
 }
 
 
@@ -96,37 +83,42 @@ float32_t AudioSamples::Dither() {
  */
 void AudioSamples::ReadSamples() {
 	this->assertDataFormat();
-	auto dataBlock = this->audioFile.ReadAllData();
-	auto tempFloat = reinterpret_cast<float32_t*>(dataBlock);
 
-	uint64_t      numSamples = this->audioFile.getNumFrames() * this->audioFile.getNumChannels();
-	uint_fast64_t s; //	Index variable for samples.
-
-	this->samples.resize(numSamples);
-	this->samples.shrink_to_fit();
-
-	if (this->audioFile.getBitsPerSample() == 8) {
-		for (s = 0; s < numSamples; ++s) {
-			this->samples[s] = static_cast<float32_t>(dataBlock[s] - 127);
-		}
-	}
-	else if (this->audioFile.getBitsPerSample() > 32) {
+	if (this->getBitsPerSample() > 32 ||
+		(this->is_pcm() && this->getBitsPerSample() >= 32)
+	) {
 		throw runtime_error("ERROR: Cannot read data without loss of resolution.");
+	}
+
+	auto dataBlock       = this->ReadAllData();
+	auto tempLittleFloat = reinterpret_cast<little_float32_t*>(dataBlock);
+	auto tempBigFloat    = reinterpret_cast<big_float32_t*>(dataBlock);
+
+	uint64_t      numSamples = this->getNumFrames() * this->getNumChannels();
+	uint_fast64_t si         = 0; //	Index variable for samples.
+
+	this->resize(numSamples);
+	this->shrink_to_fit();
+
+	if (this->getBitsPerSample() == 8) {
+		for (; si < numSamples; ++si) {
+			(*this)[si] = static_cast<float32_t>(dataBlock[si] - 127);
+		}
 	}
 	else {
 		unsigned char* dPtr = dataBlock;
 
-		if (this->audioFile.is_littleEndian()) {
-			switch (this->audioFile.getBitsPerSample()) {
+		if (this->is_littleEndian()) {
+			switch (this->getBitsPerSample()) {
 				case 16:
-					for (auto& elem : this->samples) {
+					for (auto& elem : *this) {
 						elem = static_cast<float32_t>(load_little_s16(dPtr));
 						dPtr += 2;
 					}
 					break;
 
 				case 24:
-					for (auto& elem : this->samples) {
+					for (auto& elem : *this) {
 						elem = static_cast<float32_t>(load_little_s24(dPtr));
 						dPtr += 3;
 					}
@@ -134,15 +126,9 @@ void AudioSamples::ReadSamples() {
 
 				//  Data is 32-bit float.
 				case 32:
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-					for (s = 0; s < numSamples; ++s) {
-						this->samples[s] = tempFloat[s];
+					for (; si < numSamples; ++si) {
+						(*this)[si] = static_cast<float32_t>(tempLittleFloat[si]);
 					}
-#else   //  __ORDER_BIG_ENDIAN__
-					for (s = 0, dPtr = dataBlock; s < numSamples; ++s, dPtr += 4) {
-						this->ReverseCopy4Bytes((unsigned char*)&this->samples[s], dPtr);
-					}
-#endif
 					break;
 
 				default:
@@ -151,16 +137,16 @@ void AudioSamples::ReadSamples() {
 		}
 		//	is big endian
 		else {
-			switch (this->audioFile.getBitsPerSample()) {
+			switch (this->getBitsPerSample()) {
 				case 16:
-					for (auto& elem : this->samples) {
+					for (auto& elem : *this) {
 						elem = static_cast<float32_t>(load_big_s16(dPtr));
 						dPtr += 2;
 					}
 					break;
 
 				case 24:
-					for (auto& elem : this->samples) {
+					for (auto& elem : *this) {
 						elem = static_cast<float32_t>(load_big_s24(dPtr));
 						dPtr += 3;
 					}
@@ -168,15 +154,9 @@ void AudioSamples::ReadSamples() {
 
 				//  Data is 32-bit float.
 				case 32:
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-					for (s = 0, dPtr = dataBlock; s < numSamples; ++s, dPtr += 4) {
-						ReverseCopy4Bytes(reinterpret_cast<unsigned char*>(&this->samples[s]), dPtr);
+					for (; si < numSamples; ++si) {
+						(*this)[si] = static_cast<float32_t>(tempBigFloat[si]);
 					}
-#else   //  __ORDER_BIG_ENDIAN__
-					for (s = 0; s < numSamples;) {
-						this->samples[s] = tempFloat[s];
-					}
-#endif
 					break;
 
 				default:
@@ -190,55 +170,54 @@ void AudioSamples::ReadSamples() {
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-void AudioSamples::Normalize() { this->samples.normalize_mag(GetSampleMaxMagnitude()); }
+void AudioSamples::Normalize() { this->normalize_mag(getSampleMaxMagnitude()); }
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //	Assumes data will be the same size as the buffer that was read.
 void AudioSamples::WriteSamples(const bool do_dither) {
 	this->assertDataFormat();
-	auto dataBlock = static_cast<unsigned char*>(calloc(this->audioFile.getDataSize(), 1));
 
-	uint64_t      numSamples = this->audioFile.getNumFrames() * this->audioFile.getNumChannels();
-	uint_fast64_t s; //	Index variable for samples.
+	auto dataBlock       = static_cast<unsigned char*>(calloc(this->getDataSize(), 1));
+	auto tempLittleFloat = reinterpret_cast<little_float32_t*>(dataBlock);
+	auto tempBigFloat    = reinterpret_cast<big_float32_t*>(dataBlock);
+
+	uint64_t      numSamples = this->getNumFrames() * this->getNumChannels();
+	uint_fast64_t si         = 0; //	Index variable for samples.
 
 	//	Decide whether to add dither.
-	std::function<float32_t(void)> getDither = []()-> float32_t { return 0.0; };
-	if (do_dither) getDither = []()-> float32_t { return Dither(); };
+	std::function getDither = do_dither ?
+								  []()-> float32_t { return Dither(); } :
+								  []()-> float32_t { return 0.0; };
 
-	if (this->audioFile.getBitsPerSample() == 8) {
-		for (s = 0; s < numSamples; ++s) {
-			dataBlock[s] = static_cast<uint8_t>(this->samples[s] + getDither()) + 127;
+	if (this->getBitsPerSample() == 8) {
+		for (; si < numSamples; ++si) {
+			dataBlock[si] = static_cast<uint8_t>((*this)[si] + getDither()) + 127;
 		}
 	}
 	else {
 		unsigned char* dPtr = dataBlock;
 
-		if (this->audioFile.is_littleEndian()) {
-			switch (this->audioFile.getBitsPerSample()) {
+		if (this->is_littleEndian()) {
+			switch (this->getBitsPerSample()) {
 				case 16:
-					for (auto& elem : this->samples) {
+					for (auto& elem : *this) {
 						store_little_s16(dPtr, static_cast<int16_t>(elem + getDither()));
 						dPtr += 2;
 					}
 					break;
 
 				case 24:
-					for (auto& elem : this->samples) {
+					for (auto& elem : *this) {
 						store_little_s24(dPtr, static_cast<int32_t>(elem + getDither()));
 						dPtr += 3;
 					}
 					break;
 
 				case 32:
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-					delete dataBlock;
-					dataBlock = reinterpret_cast<unsigned char*>(this->samples.data());
-#else   //  __ORDER_BIG_ENDIAN__
-					for (s = 0, dPtr = dataBlock; s < numSamples; ++s, dPtr += 4) {
-						this->ReverseCopy4Bytes(dPtr, reinterpret_cast<unsigned char*>(&this->samples[s]));
+					for (; si < numSamples; ++si) {
+						tempLittleFloat[si] = static_cast<little_float32_t>((*this)[si]); //	No dither used with floating point data.
 					}
-#endif
 					break;
 
 				default:
@@ -247,31 +226,25 @@ void AudioSamples::WriteSamples(const bool do_dither) {
 		}
 		//	is big endian
 		else {
-			switch (this->audioFile.getBitsPerSample()) {
+			switch (this->getBitsPerSample()) {
 				case 16:
-					for (auto& elem : this->samples) {
+					for (auto& elem : *this) {
 						store_big_s16(dPtr, static_cast<int16_t>(elem + getDither()));
 						dPtr += 2;
 					}
 					break;
 
 				case 24:
-					for (auto& elem : this->samples) {
+					for (auto& elem : *this) {
 						store_big_s24(dPtr, static_cast<int32_t>(elem + getDither()));
 						dPtr += 3;
 					}
 					break;
 
 				case 32:
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-					for (auto& elem : this->samples) {
-						AudioSamples::ReverseCopy4Bytes(dPtr, reinterpret_cast<unsigned char*>(&elem));
-						dPtr += 4;
+					for (; si < numSamples; ++si) {
+						tempBigFloat[si] = static_cast<big_float32_t>((*this)[si]); //	No dither used with floating point data.
 					}
-#else   //  __ORDER_BIG_ENDIAN__
-					delete dataBlock;
-					dataBlock = reinterpret_cast<unsigned char*>(this->samples.data());
-#endif
 					break;
 
 				default:
@@ -280,12 +253,8 @@ void AudioSamples::WriteSamples(const bool do_dither) {
 		}
 	}
 
-	this->audioFile.WriteAllData(dataBlock);
-	if (dataBlock != reinterpret_cast<unsigned char*>(this->samples.data())) delete dataBlock;
+	this->WriteAllData(dataBlock);
+	delete dataBlock;
 }
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-float32_t& AudioSamples::operator[](const uint64_t s) { return this->samples[s]; }
 
 } //  namespace Diskerror

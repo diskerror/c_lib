@@ -93,7 +93,6 @@ typedef union {
 //	Defined in AudioFile.cp
 class chunkVector : public vector<chunks_t*> {
 public:
-	~chunkVector(); //	Destructor releases all pointers.
 	uint32_t getHeaderSize(bool is_littleEndian);
 };
 
@@ -101,17 +100,19 @@ public:
  *	class AudioFile
  */
 class AudioFile {
+	const filesystem::path _filePath;
+
 	baseAudioFileType_t baseType = BASE_TYPE_UNKNOWN;
 	fstream             fileAccess;
 	audioFileHeader_t   header = {0, {0}, 0};
 	chunkVector         chunk;
 	chunks_t*           format;
 
-	int64_t  fileSize      = -1; // size of FORM or RF64 block (file size - 8)
-	uint32_t dataStart     = 0;  // first byte of sound data in file
-	int64_t  dataSize      = -1; // size of data chunk
-	int16_t  bytesPerFrame = -1;
-	int64_t  frameCount    = -1; // sample count of fact chunk (frames)
+	int64_t  fileSize{-1}; // size of FORM or RF64 block (file size - 8)
+	uint32_t dataStart{0}; // first byte of sound data in file
+	int64_t  dataSize{-1}; // size of data chunk
+	int16_t  bytesPerFrame{-1};
+	int64_t  frameCount{-1}; // sample count of fact chunk (frames)
 
 	int64_t dataWritePos = 0;
 
@@ -121,12 +122,12 @@ public:
 	// Constructors
 	//	Use for opening an existing file.
 	//	Throws error if file does not exist.
-	explicit AudioFile(filesystem::path);
+	explicit AudioFile(const char*);
 
 	//	Use for creating a new file.
 	//	Throws error if file already exists.
 	explicit AudioFile(
-			filesystem::path    fPath,
+			const char*         fPath,
 			uint32_t            sampleRate,
 			uint16_t            sampleSize,
 			uint16_t            numChan,
@@ -134,24 +135,29 @@ public:
 			baseAudioFileType_t baseType
 		);
 
+	//	Copy
+	AudioFile(const AudioFile& f) : _filePath(f._filePath) {
+		throw runtime_error("Copy constructor not allowed.");
+	};
+
 	// Destructor
 	~AudioFile();
 
-	const filesystem::path filePath;
+	string getFileName() const;
 
 	[[nodiscard]] bool is_pcm() const;
 	[[nodiscard]] bool is_ieee() const;
 	[[nodiscard]] bool is_littleEndian() const;
 
-	uint32_t getFormatSize() const;
-	uint16_t getNumChannels() const;
-	uint32_t getSampleRate();
-	uint16_t getBitsPerSample() const;
-	int64_t  getNumFrames() const;
-	int64_t  getDataSize() const;
-	fourcc_t getDataEncoding() const;
+	[[nodiscard]] uint32_t getFormatSize() const;
+	[[nodiscard]] uint16_t getNumChannels() const;
+	uint32_t               getSampleRate();
+	[[nodiscard]] uint16_t getBitsPerSample() const;
+	[[nodiscard]] int64_t  getNumFrames() const;
+	[[nodiscard]] int64_t  getDataSize() const;
+	[[nodiscard]] fourcc_t getDataEncoding() const;
 
-	float64_t getSampleMaxMagnitude() const;
+	[[nodiscard]] float64_t getSampleMaxMagnitude() const;
 
 	unsigned char* ReadAllData();
 	void           WriteAllData(const unsigned char*);

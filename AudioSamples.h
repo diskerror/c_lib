@@ -22,25 +22,18 @@ using namespace boost::endian;
 /**
  *	class AudioSamples
  */
-class AudioSamples {
-	AudioFile &audioFile;
-
-	static void ReverseCopy4Bytes(unsigned char*, const unsigned char*);
-
+class AudioSamples : public VectorMath<float32_t>, public AudioFile {
 	void assertDataFormat() const;
 
 public:
 	// Constructor
-	explicit AudioSamples(AudioFile&); //	Needs pointer to Diskerror::AudioFile
+	explicit AudioSamples(const char*);
 
 	// Destructor
-	~AudioSamples();
+	~AudioSamples() = default;
 
 
-	// Exposing these members because of their useful methods.
-	VectorMath<float32_t> samples;
-
-	float32_t GetSampleMaxMagnitude() const;
+	[[nodiscard]] float64_t getSampleMaxMagnitude() const;
 
 	void ReadSamples();
 
@@ -48,9 +41,7 @@ public:
 
 	static float32_t Dither();
 
-	void WriteSamples(bool do_dither = true); //	True == do dither on converstion.
-
-	float32_t& operator[](uint64_t); //	Returns sample at index.
+	void WriteSamples(bool do_dither = true); //	True == do dither on converstion to smaller int.
 };
 
 

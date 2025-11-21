@@ -3,12 +3,9 @@ SHELL = /bin/bash
 
 #	Compiler
 #	On MacOS g++: aliased to /opt/local/bin/g++-mp-15
-CXX = g++ -c -std=c++23 -fPIC -Wall -Winvalid-pch -Wno-macro-redefined
+CXX = g++ -g -c -std=c++23 -fPIC -Wall -Wextra -Winvalid-pch -Wno-macro-redefined
 
-#	Boost version
-BV = 1.87
-
-CXXFLAGS = -I/opt/local/libexec/boost/$(BV)/include
+CXXFLAGS = -I/opt/local/libexec/gcc15/libc++/include -I/opt/local/libexec/boost/1.87/include
 
 BUILD_PREF = build/
 LIB_PREF = lib/libdiskerror_

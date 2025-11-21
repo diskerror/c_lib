@@ -14,11 +14,6 @@
 
 namespace Diskerror {
 
-#ifndef RAW_DEBUG
-#define RAW_DEBUG
-// #define RAW_DEBUG std::cout << __FILE__ << ":" << __LINE__ << " " << __func__ << std::endl;
-#endif
-
 using namespace std;
 using namespace boost;
 using namespace boost::endian;
@@ -39,8 +34,6 @@ inline fourcc_t short2hexFourcc(const uint16_t in) {
 inline uint16_t hexFourcc2short(fourcc_t fcc) {
 	return strtol(fourcc2str(fcc).c_str(), nullptr, 16);
 }
-
-chunkVector::~chunkVector() { for (auto& chunk : *this) { delete chunk; } }
 
 uint32_t chunkVector::getHeaderSize(bool is_littleEndian) {
 	uint32_t totalSize = 0;
@@ -91,13 +84,13 @@ uint32_t chunkVector::getHeaderSize(bool is_littleEndian) {
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-AudioFile::AudioFile(filesystem::path fPath) : filePath(std::move(fPath)) {
+AudioFile::AudioFile(const char* fPath) : _filePath(filesystem::path(fPath)) {
 	//	Do basic checks.
-	if (!filesystem::exists(this->filePath)) throw runtime_error("File not found.");
-	if (!filesystem::is_regular_file(this->filePath)) throw runtime_error("Not a regular file.");
+	if (!filesystem::exists(this->_filePath)) throw runtime_error("File not found.");
+	if (!filesystem::is_regular_file(this->_filePath)) throw runtime_error("Not a regular file.");
 
 	//	Open file.
-	this->fileAccess.open(this->filePath.string(), ios_base::in | ios_base::out | ios_base::binary);
+	this->fileAccess.open(this->_filePath.string(), ios_base::in | ios_base::out | ios_base::binary);
 	if (this->fileAccess.fail())
 		throw invalid_argument("There was a problem opening the input file.");
 
@@ -219,14 +212,14 @@ AudioFile::AudioFile(filesystem::path fPath) : filePath(std::move(fPath)) {
 }
 
 AudioFile::AudioFile(
-		filesystem::path          fPath,
+		const char*               fPath,
 		const uint32_t            sampleRate,
 		const uint16_t            sampleSize,
 		const uint16_t            numChan,
 		const fourcc_t            encoding,
 		const baseAudioFileType_t baseType
-	) : baseType(baseType), filePath(std::move(fPath)) {
-	if (filesystem::exists(this->filePath))
+	) : _filePath(filesystem::path(fPath)), baseType(baseType) {
+	if (filesystem::exists(this->_filePath))
 		throw runtime_error("File already exists.");
 
 	this->format        = reinterpret_cast<chunks_t*>(new char[sizeof(chunks_t)]);
@@ -281,13 +274,17 @@ AudioFile::AudioFile(
 	}
 }
 
+
 AudioFile::~AudioFile() {
 	delete this->format;
-	RAW_DEBUG
 };
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+string AudioFile::getFileName() const {
+	return string(this->_filePath.filename());
+}
+
 bool AudioFile::is_pcm() const {
 	auto type = this->getDataEncoding();
 	if (type == '0001' || type == 'PCM ')
@@ -398,11 +395,11 @@ float64_t AudioFile::getSampleMaxMagnitude() const {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 unsigned char* AudioFile::ReadAllData() {
-	if (!filesystem::exists(this->filePath))
+	if (!filesystem::exists(this->_filePath))
 		throw runtime_error("File not found.");
 
 	if (!this->fileAccess.is_open())
-		this->fileAccess.open(this->filePath.string(), ios_base::in | ios_base::out | ios_base::binary);
+		this->fileAccess.open(this->_filePath.string(), ios_base::in | ios_base::out | ios_base::binary);
 
 	auto data = static_cast<unsigned char*>(calloc(this->dataSize, 1));
 	this->fileAccess.clear();
@@ -413,7 +410,7 @@ unsigned char* AudioFile::ReadAllData() {
 
 //	Write new data to existing data block. Other chunks are not changed.
 void AudioFile::WriteAllData(const unsigned char* data) {
-	if (!filesystem::exists(this->filePath)) throw runtime_error("File does not yet exist.");
+	if (!filesystem::exists(this->_filePath)) throw runtime_error("File does not yet exist.");
 
 	this->fileAccess.clear();
 	this->fileAccess.seekp(this->dataStart);
@@ -502,7 +499,7 @@ void AudioFile::writeNewHeader() {
 		throw runtime_error("File already has header.");
 
 	if (!this->fileAccess.is_open())
-		this->fileAccess.open(this->filePath.string(), ios_base::in | ios_base::out | ios_base::binary);
+		this->fileAccess.open(this->_filePath.string(), ios_base::in | ios_base::out | ios_base::binary);
 
 	size_t totalSize = this->getAllChunksSize();
 	this->dataStart  = this->baseType == BASE_TYPE_WAVE ? 4096 : 512;
@@ -554,7 +551,7 @@ void AudioFile::write(const char* data, uint64_t size) {
 
 	this->dataWritePos = static_cast<int64_t>(this->fileAccess.tellp()) - this->dataStart;
 
-	int64_t fSize = filesystem::file_size(this->filePath.filename());
+	int64_t fSize = filesystem::file_size(this->_filePath.filename());
 
 	if (this->is_littleEndian())
 		this->header.lSize = fSize - 8;
