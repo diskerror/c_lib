@@ -24,30 +24,28 @@ using namespace std;
  * @brief Represents a floating-point number with extended 80-bit precision.
  *
  * This class provides read and write functionality for reading older,
- *   non-standard big-endian 80-bit floating point numbers. It has nothing else
- *   that will assist with 80-bit calculations.
+ *   non-standard big-endian 80-bit floating point numbers. It will not
+ *   assist with 80-bit calculations.
  * This class was originally designed to read and write an AIFF audio file's
- *   FORM chunk samplerate value.
+ *   FORM chunk sampleRate value.
  */
 class BigFloat80 {
 	big_uint16_t sign_exponent = 0;
 	big_uint64_t mantissa      = 0;
 
 public:
-	//	Create self and convert from double.
+	//	Create self.
 	BigFloat80() = default;
 
-	//	Create self and convert from integer.
-	BigFloat80(const float64_t);
+	//	Create self and convert from float.
+	BigFloat80(float64_t);
 
 	//	Create self and convert from integer.
-	BigFloat80(const int64_t);
-
-	//	Create self and convert from integer.
-	BigFloat80(const int);
+	BigFloat80(int64_t);
+	BigFloat80(int);
 
 	//	Copy from unknown 10 byte block of memory, byte by byte. Dangerous.
-	BigFloat80(const char*);
+	explicit BigFloat80(const char*);
 
 	//	Copy-constructor.
 	BigFloat80(const BigFloat80&) = default;
@@ -56,14 +54,15 @@ public:
 	~BigFloat80() = default;
 
 
-	const float64_t toDouble() const; //	can cause loss of precision or cause overvalue
+	[[nodiscard]]
+	float64_t toDouble() const; //	can cause loss of precision or overvalue E: 15->11, M:63->52
 	void            fromDouble(float64_t);
 
 
-	BigFloat80& operator=(float64_t);   //	Assign a float to this.
-	BigFloat80& operator=(uint32_t);    //	Assign an integer to this.
-	operator float64_t() const;         //	Assign this to float.
-	const float64_t operator()() const; //	Return float.
+	BigFloat80& operator=(float64_t);       //	Assign a native endian float to this.
+	BigFloat80& operator=(uint32_t);        //	Assign an integer to this.
+	explicit    operator float64_t() const; //	Assign this to native endian float.
+	float64_t   operator()() const;         //	Return float.
 };
 
 typedef BigFloat80 big_float80_t;

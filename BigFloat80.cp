@@ -4,7 +4,7 @@
 
 #include "BigFloat80.h"
 
-#include <limits>
+//#include <limits>
 #include <boost/endian/arithmetic.hpp>
 
 namespace Diskerror {
@@ -29,7 +29,7 @@ BigFloat80::BigFloat80(const char* inPtr) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-const float64_t BigFloat80::toDouble() const {
+float64_t BigFloat80::toDouble() const {
 	big_fi_t fi;
 
 	//	If j-bit is "on" and exponent is "zero" then is it a denormalized value of "1.0"?
@@ -42,9 +42,9 @@ const float64_t BigFloat80::toDouble() const {
 
 	fi.i64            = (this->mantissa & 0x7FFFFFFFFFFFFFFF) >> 11; //	ignore j-bit
 	big_uint16_t expo = (this->sign_exponent & 0x7FFF) - 16383 + 1023;
-	fi.i16            |= (expo << 4 & 0x7FF0) | (this->sign_exponent & 0x8000);
+	fi.i16 |= (expo << 4 & 0x7FF0) | (this->sign_exponent & 0x8000);
 
-	return fi.f64;
+	return fi.f64; //	Big endian to native endian.
 
 
 	// const float32_t    sign     = this->sign_exponent & 0x8000 ? -1.0 : 1.0;
@@ -69,9 +69,9 @@ const float64_t BigFloat80::toDouble() const {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-void BigFloat80::fromDouble(float64_t value) {
+void BigFloat80::fromDouble(const float64_t value) {
 	big_fi_t fi;
-	fi.f64 = value;
+	fi.f64 = static_cast<big_float64_t>(value);
 
 	this->mantissa = (fi.i64 << 11) & 0x7FFFFFFFFFFFFFFF; //	left most bit is forced to 0
 
@@ -103,7 +103,7 @@ BigFloat80& BigFloat80::operator=(const uint32_t rhs) {
 
 BigFloat80::operator float64_t() const { return this->toDouble(); }
 
-const float64_t BigFloat80::operator()() const { return this->toDouble(); }
+float64_t BigFloat80::operator()() const { return this->toDouble(); }
 
 
 }
