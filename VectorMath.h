@@ -5,7 +5,6 @@
 #ifndef DISKERROR_VECTORMATH_H
 #define DISKERROR_VECTORMATH_H
 
-#include <algorithm>
 #include <limits>
 #include <random>
 #include <vector>

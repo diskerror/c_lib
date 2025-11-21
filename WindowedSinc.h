@@ -28,7 +28,7 @@ using namespace std;
  * Type should only be float, double, or long double.
  * @tparam T
  */
-template <typename T>
+template<typename T>
 class WindowedSinc : public VectorMath<T> {
 	const T twoPi = 2.0 * numbers::pi_v<T>;
 
@@ -96,7 +96,7 @@ public:
 		this->resize(this->M + 1);
 		this->shrink_to_fit();
 
-		int32_t i, imMo2;
+		uint32_t i, imMo2;
 		for (i = 0; i < this->Mo2; ++i) {
 			imMo2      = i - this->Mo2;
 			(*this)[i] = sin(natFc * imMo2) / imMo2;
