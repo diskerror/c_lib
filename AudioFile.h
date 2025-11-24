@@ -143,7 +143,8 @@ public:
 	// Destructor
 	~AudioFile();
 
-	string getFileName() const;
+	string              getFileName() const;
+	baseAudioFileType_t getBaseType() const;
 
 	[[nodiscard]] bool is_pcm() const;
 	[[nodiscard]] bool is_ieee() const;
@@ -158,12 +159,11 @@ public:
 	[[nodiscard]] int64_t  getDataSize() const;
 	[[nodiscard]] fourcc_t getDataEncoding() const;
 
-	[[nodiscard]] float64_t getSampleMaxMagnitude() const;
-
 	unsigned char* ReadAllData();
 	void           WriteAllData(const unsigned char*);
 
 	uint16_t        addChunk(chunks_t*);
+	uint16_t        getChunkCount() const;
 	const chunks_t* getChunk(uint16_t);
 
 	void writeUpdatedHeader();

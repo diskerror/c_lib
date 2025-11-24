@@ -10,7 +10,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <utility>
 
 namespace Diskerror {
 
@@ -24,11 +23,7 @@ inline string fourcc2str(fourcc_t fcc) {
 }
 
 inline fourcc_t short2hexFourcc(const uint16_t in) {
-	string   s = format("{:04X}", in);
-	fourcc_t fcc;
-	auto     fccp = reinterpret_cast<char*>(&fcc);
-	for (uint16_t i = 0; i < 4; i++) fccp[i] = s.c_str()[i];
-	return fcc;
+	return *reinterpret_cast<fourcc_t*>( format("{:04X}", in).data() );
 }
 
 inline uint16_t hexFourcc2short(fourcc_t fcc) {
@@ -285,6 +280,10 @@ string AudioFile::getFileName() const {
 	return string(this->_filePath.filename());
 }
 
+baseAudioFileType_t AudioFile::getBaseType() const {
+	return this->baseType;
+}
+
 bool AudioFile::is_pcm() const {
 	auto type = this->getDataEncoding();
 	if (type == '0001' || type == 'PCM ')
@@ -370,31 +369,6 @@ fourcc_t AudioFile::getDataEncoding() const {
 };
 
 
-//	Maximum value storable == 2^(nBits-1) - 1
-float64_t AudioFile::getSampleMaxMagnitude() const {
-	if (this->is_ieee())
-		return 1.0;
-
-	uint16_t bytesPS = ceil(this->getBitsPerSample() / 8.0);
-	switch (bytesPS) {
-		case 1:
-			return numeric_limits<native_int8_t>::max();
-
-		case 2:
-			return numeric_limits<native_int16_t>::max();
-
-		case 3:
-			return numeric_limits<native_int24_t>::max();
-
-		case 4:
-			return numeric_limits<native_int32_t>::max();
-
-		default:
-			return numeric_limits<float32_t>::quiet_NaN();
-	}
-}
-
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 unsigned char* AudioFile::ReadAllData() {
 	if (!filesystem::exists(this->_filePath))
@@ -424,6 +398,10 @@ void AudioFile::WriteAllData(const unsigned char* data) {
 uint16_t AudioFile::addChunk(chunks_t* chk) {
 	this->chunk.push_back(chk);
 	return this->chunk.size() - 1;
+}
+
+uint16_t AudioFile::getChunkCount() const {
+	return this->chunk.size();
 }
 
 //	Returns pointer to chunk at the index.

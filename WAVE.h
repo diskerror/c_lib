@@ -268,4 +268,4 @@ typedef struct WaveInstrumentChunk : waveChunkHead_t {
 
 //	Peak Chunk ??
 
-#endif /* DISKERROR_WAVE_H */
+#endif
