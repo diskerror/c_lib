@@ -30,7 +30,7 @@ using namespace std;
  */
 template<typename T>
 class WindowedSinc : public VectorMath<T> {
-	const T twoPi = 2.0 * numbers::pi_v<T>;
+	const T two_pi = 2.0 * numbers::pi_v<T>;
 
 	const uint32_t M   = 0;
 	const uint32_t Mo2 = 0; //	M / 2, or midpoint of size, which is always a positive odd number
@@ -83,7 +83,7 @@ public:
 		if (cutoff_freq <= 0.0 || cutoff_freq >= 0.5) throw runtime_error("Cut-off frequency out of range.");
 		//		if ( transition <= 0.0 || transition >= 0.5 ) throw runtime_error("Transition band width out of range.");
 
-		const T natFc = twoPi * cutoff_freq;
+		const T natFc = two_pi * cutoff_freq;
 		//		this->M = lround(4.0 / transition);
 		//	Ensure M is even.
 		//  The Book describes loops using the range of 0 to M such that 0 <= i <= M.
@@ -96,18 +96,18 @@ public:
 		this->resize(this->M + 1);
 		this->shrink_to_fit();
 
-		uint32_t i, imMo2;
+		uint32_t i, i_m_mo2;
 		for (i = 0; i < this->Mo2; ++i) {
-			imMo2      = i - this->Mo2;
-			(*this)[i] = sin(natFc * imMo2) / imMo2;
+			i_m_mo2    = i - this->Mo2;
+			(*this)[i] = sin(natFc * i_m_mo2) / i_m_mo2;
 		}
 
 		//	Account for divide by zero when i == Mo2
 		(*this)[i++] = natFc;
 
 		for (; i <= M; ++i) {
-			imMo2      = i - this->Mo2;
-			(*this)[i] = sin(natFc * imMo2) / imMo2;
+			i_m_mo2    = i - this->Mo2;
+			(*this)[i] = sin(natFc * i_m_mo2) / i_m_mo2;
 		}
 
 		//  normalize sum of all H to 1.0
@@ -127,8 +127,8 @@ public:
 	//  Applies window to H.
 	void ApplyBlackman() {
 		for (size_t i = 0; i <= this->M; i++) {
-			T twoPiIoM = twoPi * (i + 1) / (this->M + 2);
-			(*this)[i] *= (0.42 - (0.5 * cos(twoPiIoM)) + (0.08 * cos(2.0 * twoPiIoM)));
+			T two_pi_io_m = two_pi * (i + 1) / (this->M + 2);
+			(*this)[i] *= (0.42 - (0.5 * cos(two_pi_io_m)) + (0.08 * cos(2.0 * two_pi_io_m)));
 		}
 
 		this->normalize();
@@ -137,7 +137,7 @@ public:
 
 	void ApplyHamming() {
 		for (size_t i = 0; i <= this->M; i++) {
-			(*this)[i] *= 0.54 - (0.46 * cos(twoPi * i / this->M));
+			(*this)[i] *= 0.54 - (0.46 * cos(two_pi * i / this->M));
 		}
 
 		this->normalize();
