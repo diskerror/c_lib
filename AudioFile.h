@@ -100,21 +100,21 @@ public:
  *	class AudioFile
  */
 class AudioFile {
-	const filesystem::path _filePath;
+	const filesystem::path the_file_path;
 
-	baseAudioFileType_t baseType = BASE_TYPE_UNKNOWN;
-	fstream             fileAccess;
+	baseAudioFileType_t base_type = BASE_TYPE_UNKNOWN;
+	fstream             file_access;
 	audioFileHeader_t   header = {0, {0}, 0};
 	chunkVector         chunk;
 	chunks_t*           format;
 
-	int64_t  fileSize{-1}; // size of FORM or RF64 block (file size - 8)
-	uint32_t dataStart{0}; // first byte of sound data in file
-	int64_t  dataSize{-1}; // size of data chunk
-	int16_t  bytesPerFrame{-1};
-	int64_t  frameCount{-1}; // sample count of fact chunk (frames)
+	int64_t  file_size{-1}; // size of FORM or RF64 block (file size - 8)
+	uint32_t data_start{0}; // first byte of sound data in file
+	int64_t  data_size{-1}; // size of data chunk
+	int16_t  bytes_per_frame{-1};
+	int64_t  frame_count{-1}; // sample count of fact chunk (frames)
 
-	int64_t dataWritePos = 0;
+	int64_t data_write_pos = 0;
 
 	size_t getAllChunksSize();
 
@@ -136,7 +136,7 @@ public:
 		);
 
 	//	Copy
-	AudioFile(const AudioFile& f) : _filePath(f._filePath) {
+	AudioFile(const AudioFile& f) : the_file_path(f.the_file_path) {
 		throw runtime_error("Copy constructor not allowed.");
 	};
 
