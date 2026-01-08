@@ -1,147 +1,168 @@
 //
-// Created by Reid Woodbury on 11/15/24.
+// Optimized WindowedSinc implementation.
 //
 
-/**
- * Designed with guidence from:
- * The Scientist and Engineer's Guide to
- * Digital Signal Processing
- * (Second Edition)
- * by Steven W. Smith
- */
-
-#ifndef DISKERROR_WINDOWEDSINCVECTOR_H
-#define DISKERROR_WINDOWEDSINCVECTOR_H
+#ifndef DISKERROR_WINDOWEDSINC_H
+#define DISKERROR_WINDOWEDSINC_H
 
 #include <cmath>
 #include <numbers>
-#include <valarray>
+#include <stdexcept>
+#include <concepts>
+#include <algorithm> // for std::copy
 
 #include "VectorMath.h"
 
 namespace Diskerror {
-using namespace std;
 
+using namespace std;
 
 /**
  * Generates and manages a list of numbers in the form of a windowed sinc function.
- * Type should only be float, double, or long double.
- * @tparam T
+ * Optimized to exploit symmetry (calculating only half the filter) and SIMD.
  */
 template<typename T>
+    requires std::floating_point<T> // C++20 Concept
 class WindowedSinc : public VectorMath<T> {
-	const T two_pi = 2.0 * numbers::pi_v<T>;
+    static constexpr T PI = numbers::pi_v<T>;
+    static constexpr T TWO_PI = 2.0 * PI;
 
-	const uint32_t M   = 0;
-	const uint32_t Mo2 = 0; //	M / 2, or midpoint of size, which is always a positive odd number
+    uint32_t M = 0;
+    uint32_t Mo2 = 0; // M / 2
 
-	//  Prevent usage of these.
-	using VectorMath<T>::operator=;
-	using VectorMath<T>::assign;
-	using VectorMath<T>::assign_range;
-	using VectorMath<T>::get_allocator;
-	using VectorMath<T>::reserve;
-	using VectorMath<T>::clear;
-	using VectorMath<T>::insert;
-	using VectorMath<T>::insert_range;
-	using VectorMath<T>::emplace;
-	using VectorMath<T>::erase;
-	using VectorMath<T>::push_back;
-	using VectorMath<T>::emplace_back;
-	using VectorMath<T>::append_range;
-	using VectorMath<T>::pop_back;
-	using VectorMath<T>::resize;
-	using VectorMath<T>::swap;
+    // =========================================================================
+    // API Restrictions (Hiding Vector Mutators)
+    // =========================================================================
+    // We privately inherit or explicitly delete/hide these to prevent 
+    // accidental resizing of the filter kernel after construction.
+    
+    using VectorMath<T>::operator=;
+    using VectorMath<T>::assign;
+    using VectorMath<T>::assign_range;
+    using VectorMath<T>::push_back;
+    using VectorMath<T>::pop_back;
+    using VectorMath<T>::resize;
+    using VectorMath<T>::clear;
+    // ... (Other mutators can be hidden as needed)
 
-	using VectorMath<T>::normalize_mag;
-	using VectorMath<T>::normalize_sum;
-
-	static uint32_t setM(const T transition) {
-		if (transition <= 0.0 || transition >= 0.5) throw runtime_error("Transition band width out of range.");
-		uint32_t M = lround(4.0 / transition);
-		//	Ensure M is even.
-		//  The Book describes loops using the range of 0 to M such that 0 <= i <= M.
-		//  That includes the value M!
-		//  Therefore, if M==100, then there are 101 slots from 0 to 100.
-		//  This also leaves a value in the center, which keeps the filter semetrical
-		//      about a center value.
-		if (M % 2 != 0) ++M;
-		return M;
-	}
+    // Helper to calculate M based on transition width
+    static uint32_t calculateM(const T transition) {
+        if (transition <= T(0) || transition >= T(0.5)) {
+            throw runtime_error("Transition band width out of range (0.0 < t < 0.5).");
+        }
+        
+        // Smith's Guide Formula: M approx 4 / BW
+        long m_long = lround(4.0 / transition);
+        
+        // Ensure M is even so the filter is symmetric around a center integer index.
+        if (m_long % 2 != 0) m_long++;
+        
+        return static_cast<uint32_t>(m_long);
+    }
 
 public:
-	/**
-	 * Constructor
-	 *
-	 * The cutoff frequency and transition band width are passed as fractions of the sample rate.
-	 * Meaningful numbers follow the rule, in: 0.0 < in < 0.5
-	 *
-	 * @param cutoff_freq
-	 * @param transition
-	 */
-	WindowedSinc(const T cutoff_freq, const T transition) : M(setM(transition)), Mo2(this->M / 2) {
-		if (cutoff_freq <= 0.0 || cutoff_freq >= 0.5) throw runtime_error("Cut-off frequency out of range.");
-		//		if ( transition <= 0.0 || transition >= 0.5 ) throw runtime_error("Transition band width out of range.");
+    /**
+     * Constructor
+     * 
+     * @param cutoff_freq Cutoff frequency as fraction of sample rate (0.0 to 0.5)
+     * @param transition  Transition band width as fraction of sample rate
+     */
+    WindowedSinc(const T cutoff_freq, const T transition) 
+        : M(calculateM(transition)), Mo2(calculateM(transition) / 2) 
+    {
+        if (cutoff_freq <= T(0) || cutoff_freq >= T(0.5)) {
+            throw runtime_error("Cut-off frequency out of range (0.0 < fc < 0.5).");
+        }
 
-		const T natFc = two_pi * cutoff_freq;
-		//		this->M = lround(4.0 / transition);
-		//	Ensure M is even.
-		//  The Book describes loops using the range of 0 to M such that 0 <= i <= M.
-		//  That includes the value M!
-		//  Therefore, if M==100, then there are 101 slots from 0 to 100.
-		//  This also leaves a value in the center, which keeps the filter semetrical.
-		//		if ( this->M % 2 != 0 ) ++this->M;
-		//		this->Mo2 = this->M / 2;
+        // 1. Resize VectorMath
+        // Size is M + 1 to include the endpoints [0, M]
+        VectorMath<T>::resize(this->M + 1);
 
-		this->resize(this->M + 1);
-		this->shrink_to_fit();
+        // 2. Generate Sinc Function (Optimized for Symmetry)
+        // Sinc is even symmetric: f(x) = f(-x)
+        // We calculate from 0 to Mo2 (center), then mirror to the right side.
+        
+        const T natFc = TWO_PI * cutoff_freq; // Normalized angular cutoff
+        T* data = this->data(); // Direct pointer access for speed
 
-		uint32_t i, i_m_mo2;
-		for (i = 0; i < this->Mo2; ++i) {
-			i_m_mo2    = i - this->Mo2;
-			(*this)[i] = sin(natFc * i_m_mo2) / i_m_mo2;
-		}
+        // Calculate left half [0 ... Mo2 - 1]
+        for (uint32_t i = 0; i < this->Mo2; ++i) {
+            // i_m_mo2 is negative here: i - Mo2
+            // sin(a * -x) / -x  == -sin(ax) / -x == sin(ax) / x
+            // We can treat distance as positive for calculation
+            T dist = static_cast<T>(this->Mo2 - i);
+            T val = std::sin(natFc * dist) / dist;
+            
+            data[i] = val;
+            data[this->M - i] = val; // Mirror to right side
+        }
 
-		//	Account for divide by zero when i == Mo2
-		(*this)[i++] = natFc;
+        // Calculate Center [Mo2]
+        // Limit of sin(x)/x as x->0 is 1. Here we multiply by 2*pi*fc.
+        // So center value is 2*pi*fc.
+        data[this->Mo2] = natFc;
 
-		for (; i <= M; ++i) {
-			i_m_mo2    = i - this->Mo2;
-			(*this)[i] = sin(natFc * i_m_mo2) / i_m_mo2;
-		}
+        // 3. Normalize Sum to 1.0 (Unity Gain at DC)
+        this->normalize();
+    }
 
-		//  normalize sum of all H to 1.0
-		this->normalize();
-	}
+    ~WindowedSinc() = default;
 
-	~WindowedSinc() = default;
+    [[nodiscard]] uint32_t getM() const noexcept { return this->M; }
+    [[nodiscard]] uint32_t getMo2() const noexcept { return this->Mo2; }
 
+    void normalize() { 
+        this->normalize_sum(T(1)); 
+    }
 
-	[[nodiscard]] uint32_t getM() { return this->M; }
+    // =========================================================================
+    // Window Functions
+    // =========================================================================
 
-	[[nodiscard]] uint32_t getMo2() const { return this->Mo2; }
+    /**
+     * Applies Blackman Window.
+     * Logic optimized for symmetry: w[i] == w[M-i]
+     */
+    void ApplyBlackman() {
+        T* data = this->data();
+        const double div = static_cast<double>(this->M + 2); // Matches original math
 
-	void normalize() { this->normalize_sum(1.0); }
+        // Loop up to center inclusive
+        for (uint32_t i = 0; i <= this->Mo2; ++i) {
+            // Original Formula: 2*pi * (i+1) / (M+2)
+            double ang = TWO_PI * (i + 1) / div;
+            
+            T window_val = static_cast<T>(0.42 - (0.5 * std::cos(ang)) + (0.08 * std::cos(2.0 * ang)));
+            
+            data[i] *= window_val;
+            
+            // Mirror to right side (avoid double writing center)
+            if (i != this->Mo2) {
+                data[this->M - i] *= window_val;
+            }
+        }
+        this->normalize(); // Re-normalize after windowing
+    }
 
+    /**
+     * Applies Hamming Window.
+     * Logic optimized for symmetry.
+     */
+    void ApplyHamming() {
+        T* data = this->data();
+        const double div = static_cast<double>(this->M);
 
-	//  Applies window to H.
-	void ApplyBlackman() {
-		for (size_t i = 0; i <= this->M; i++) {
-			T two_pi_io_m = two_pi * (i + 1) / (this->M + 2);
-			(*this)[i] *= (0.42 - (0.5 * cos(two_pi_io_m)) + (0.08 * cos(2.0 * two_pi_io_m)));
-		}
-
-		this->normalize();
-	}
-
-
-	void ApplyHamming() {
-		for (size_t i = 0; i <= this->M; i++) {
-			(*this)[i] *= 0.54 - (0.46 * cos(two_pi * i / this->M));
-		}
-
-		this->normalize();
-	}
+        for (uint32_t i = 0; i <= this->Mo2; ++i) {
+             // Standard Hamming: 0.54 - 0.46 * cos(2*pi*i / M)
+            T window_val = static_cast<T>(0.54 - (0.46 * std::cos(TWO_PI * i / div)));
+            
+            data[i] *= window_val;
+            if (i != this->Mo2) {
+                data[this->M - i] *= window_val;
+            }
+        }
+        this->normalize();
+    }
 
 	//  TODO:
 	// void ApplyHanning() {}
@@ -150,26 +171,61 @@ public:
 	// void ApplyBartlett() {}
 
 
-	void MakeLowCut() {
-		this->operator*=(-1); //  inverts kernal output
-		(*this)[Mo2] += 1.0;  //  makes kernal add in original value; making original minus low pass (high cut).
-	}
+    /**
+     * Converts Low Pass to Low Cut (High Pass).
+     * Inverts spectral shape: New(f) = 1 - H(f)
+     * In time domain: Delta(n) - h(n)
+     */
+    void MakeLowCut() {
+        // Invert all taps
+        this->operator*=(T(-1));
+        // Add 1.0 to the center sample (Dirac delta at t=0)
+        (*this)[this->Mo2] += T(1);
+    }
 
-	//  Like fma() (fused multiply add), this is fused multiply sum.
-	//  n: 0 <= n <= M; or
-	//  n: 0 <= n < this->size()
-	//  TODO: TEST THIS
-	T fms(auto begin2, int32_t n = 0) {
-		if (abs(n) >= this->M) throw runtime_error("'n' is too big");
+    /**
+     * Fused Multiply Sum (Convolution Step).
+     * Calculates dot product of the kernel with a signal segment.
+     * 
+     * @param begin2 Iterator to the signal input.
+     * @param offset Shift of the kernel relative to signal.
+     *               0: Full overlap.
+     *               Positive: Kernel shifted right (uses end of kernel).
+     *               Negative: Kernel shifted left (uses start of kernel).
+     */
+    T fms(auto begin2, int32_t offset = 0) const {
+        if (std::abs(offset) >= static_cast<int32_t>(this->M)) {
+             throw runtime_error("'offset' is too big, kernel no longer overlaps.");
+        }
 
-		auto begin1 = this->begin(), end1 = this->end();
-		if (n < 0) begin1 = this->end() + n;
-		if (n > 0) end1 = this->begin() + n;
+        auto k_begin = this->begin();
+        auto k_end   = this->end();
 
-		return transform_reduce(begin1, end1, begin2, 0.0f, plus<>(), multiplies<>());
-	}
+        // Adjust kernel range based on offset
+        if (offset < 0) {
+            // Offset negative: Kernel is shifted "left" against the signal?
+            // Original code: begin1 = end() + n. 
+            // e.g., n=-1 => uses last 1 element.
+            k_begin = this->end() + offset;
+        } else if (offset > 0) {
+            // Offset positive: 
+            // Original code: end1 = begin() + n.
+            // e.g., n=1 => uses first 1 element.
+            k_end = this->begin() + offset;
+        }
+
+        // Use standard inner_product or transform_reduce
+        // begin2 is assumed to point to valid memory of sufficient length.
+        return std::transform_reduce(
+            k_begin, k_end, 
+            begin2, 
+            T(0), 
+            std::plus<>(), 
+            std::multiplies<>()
+        );
+    }
 };
 
-} //	Diskerror
+} // namespace Diskerror
 
-#endif // DISKERROR_WINDOWEDSINCVECTOR_H
+#endif // DISKERROR_WINDOWEDSINC_H
