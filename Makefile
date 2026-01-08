@@ -11,7 +11,7 @@ BUILD_PREF = build/
 LIB_PREF = lib/libdiskerror_
 
 AUDIO_LIB = $(addprefix $(LIB_PREF), audio.a)
-AUDIO = BigFloat80 AudioFile AudioSamples
+AUDIO = AudioFile AudioSamples
 AUDIO_OBJS = $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 
 #CLAPP_LIB = $(addprefix $(LIB_PREF), clapp.a)
@@ -28,9 +28,6 @@ $(AUDIO_LIB): $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 
 #$(CLAPP_LIB): $(CLAPP_OBJS)
 #	ar -rc $@ $(CLAPP_OBJS)
-
-$(addprefix $(BUILD_PREF), BigFloat80.o): BigFloat80.cp BigFloat80.h Makefile
-	$(CXX) $(CXXFLAGS) -O3 $< -o $@
 
 $(addprefix $(BUILD_PREF), AudioFile.o): AudioFile.cp AudioFile.h Makefile
 	$(CXX) $(CXXFLAGS) -O3 $< -o $@
