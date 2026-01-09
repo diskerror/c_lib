@@ -5,7 +5,7 @@
 #ifndef DISKERROR_AUDIOSAMPLES_H
 #define DISKERROR_AUDIOSAMPLES_H
 
-
+#include <filesystem>
 #include <boost/cstdfloat.hpp>
 #include <boost/endian.hpp>
 
@@ -27,7 +27,7 @@ class AudioSamples : public VectorMath<float32_t>, public AudioFile {
 
 public:
 	// Constructor
-	explicit AudioSamples(const char*);
+	explicit AudioSamples(const filesystem::path&);
 
 	// Destructor
 	~AudioSamples() = default;

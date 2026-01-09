@@ -4,3 +4,4 @@
 *.a
 .codebuddy
 .idea
+*-orig

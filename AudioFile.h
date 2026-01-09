@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#include <span>
+#include <memory>
 
 #include <boost/cstdfloat.hpp>
 #include <boost/endian/arithmetic.hpp>
@@ -90,8 +92,15 @@ typedef union {
 	inst_t     inst;
 } chunks_t;
 
+// Custom deleter for chunks_t which are allocated as char arrays
+struct ChunkDeleter {
+	void operator()(chunks_t* p) const {
+		delete[] reinterpret_cast<char*>(p);
+	}
+};
+
 //	Defined in AudioFile.cp
-class chunkVector : public vector<chunks_t*> {
+class chunkVector : public vector<unique_ptr<chunks_t, ChunkDeleter>> {
 public:
 	uint32_t getHeaderSize(bool is_littleEndian);
 };
@@ -106,7 +115,7 @@ class AudioFile {
 	fstream             file_access;
 	audioFileHeader_t   header = {0, {0}, 0};
 	chunkVector         chunk;
-	chunks_t*           format;
+	chunks_t*           format; // Non-owning pointer (observer)
 
 	int64_t  file_size{-1}; // size of FORM or RF64 block (file size - 8)
 	uint32_t data_start{0}; // first byte of sound data in file
@@ -122,12 +131,12 @@ public:
 	// Constructors
 	//	Use for opening an existing file.
 	//	Throws error if file does not exist.
-	explicit AudioFile(const char*);
+	explicit AudioFile(const filesystem::path&);
 
 	//	Use for creating a new file.
 	//	Throws error if file already exists.
 	explicit AudioFile(
-			const char*         fPath,
+			const filesystem::path& fPath,
 			uint32_t            sampleRate,
 			uint16_t            sampleSize,
 			uint16_t            numChan,
@@ -159,8 +168,8 @@ public:
 	[[nodiscard]] int64_t  getDataSize() const;
 	[[nodiscard]] fourcc_t getDataEncoding() const;
 
-	unsigned char* ReadAllData();
-	void           WriteAllData(const unsigned char*);
+	vector<unsigned char> ReadAllData();
+	void                  WriteAllData(span<const unsigned char>);
 
 	uint16_t        addChunk(chunks_t*);
 	uint16_t        getChunkCount() const;

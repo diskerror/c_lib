@@ -10,6 +10,7 @@
 #include <iostream>
 #include <random>
 #include <stdexcept>
+#include <vector>
 
 namespace Diskerror {
 
@@ -18,7 +19,7 @@ using namespace boost;
 using namespace boost::endian;
 
 
-AudioSamples::AudioSamples(const char* aFile) : AudioFile(aFile) {}
+AudioSamples::AudioSamples(const filesystem::path& aFile) : AudioFile(aFile) {}
 
 void AudioSamples::assertDataFormat() const {
 	if (!this->is_pcm() && !this->is_ieee()) {
@@ -91,8 +92,8 @@ void AudioSamples::ReadSamples() {
 	}
 
 	auto dataBlock       = this->ReadAllData();
-	auto tempLittleFloat = reinterpret_cast<little_float32_t*>(dataBlock);
-	auto tempBigFloat    = reinterpret_cast<big_float32_t*>(dataBlock);
+	auto tempLittleFloat = reinterpret_cast<little_float32_t*>(dataBlock.data());
+	auto tempBigFloat    = reinterpret_cast<big_float32_t*>(dataBlock.data());
 
 	uint64_t      numSamples = this->getNumFrames() * this->getNumChannels();
 	uint_fast64_t si         = 0; //	Index variable for samples.
@@ -106,7 +107,7 @@ void AudioSamples::ReadSamples() {
 		}
 	}
 	else {
-		unsigned char* dPtr = dataBlock;
+		unsigned char* dPtr = dataBlock.data();
 
 		if (this->is_littleEndian()) {
 			switch (this->getBitsPerSample()) {
@@ -164,8 +165,6 @@ void AudioSamples::ReadSamples() {
 			}
 		}
 	}
-
-	delete dataBlock;
 }
 
 
@@ -178,9 +177,9 @@ void AudioSamples::Normalize() { this->normalize_mag(getSampleMaxMagnitude()); }
 void AudioSamples::WriteSamples(const bool do_dither) {
 	this->assertDataFormat();
 
-	auto dataBlock       = static_cast<unsigned char*>(calloc(this->getDataSize(), 1));
-	auto tempLittleFloat = reinterpret_cast<little_float32_t*>(dataBlock);
-	auto tempBigFloat    = reinterpret_cast<big_float32_t*>(dataBlock);
+	vector<unsigned char> dataBlock(this->getDataSize());
+	auto tempLittleFloat = reinterpret_cast<little_float32_t*>(dataBlock.data());
+	auto tempBigFloat    = reinterpret_cast<big_float32_t*>(dataBlock.data());
 
 	uint64_t      numSamples = this->getNumFrames() * this->getNumChannels();
 	uint_fast64_t si         = 0; //	Index variable for samples.
@@ -196,7 +195,7 @@ void AudioSamples::WriteSamples(const bool do_dither) {
 		}
 	}
 	else {
-		unsigned char* dPtr = dataBlock;
+		unsigned char* dPtr = dataBlock.data();
 
 		if (this->is_littleEndian()) {
 			switch (this->getBitsPerSample()) {
@@ -254,7 +253,6 @@ void AudioSamples::WriteSamples(const bool do_dither) {
 	}
 
 	this->WriteAllData(dataBlock);
-	delete dataBlock;
 }
 
 } //  namespace Diskerror
