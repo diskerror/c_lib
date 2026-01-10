@@ -1,7 +1,7 @@
 # c_lib
 
 ## Project Overview
-`c_lib` is a C++ library (specifically `libdiskerror_audio`) focused on audio file processing (WAVE, AIFF) and high-precision mathematics (`BigFloat80`). It also includes a command-line application helper (`clapp`).
+`c_lib` is a C++ library (specifically `libdiskerror_audio`) focused on audio file processing (WAVE, AIFF). It also includes a command-line application helper (`clapp`).
 
 ## Architecture & Technologies
 -   **Language:** C++23
@@ -11,7 +11,7 @@
 
 ## Key Components
 -   **AudioFile:** Handling of WAVE and AIFF audio file formats.
--   **BigFloat80:** High-precision floating-point arithmetic.
+-   **BigFloat80:** Software implimented conversion of stored big-endian 80-bit float.
 -   **clapp:** "Command Line APPlication" - A base class for building CLI tools.
 
 ## Building
