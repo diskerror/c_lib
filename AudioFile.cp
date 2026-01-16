@@ -3,13 +3,15 @@
 //
 
 #include "AudioFile.h"
+#include "DiskerrorExceptions.h"
 
-#include <format>
-#include <functional>
+#include <cmath>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
-#include <string>
+#include <algorithm>
+#include <cstring>
+
+#include "BigFloat80.h"
 
 namespace Diskerror {
 
@@ -19,267 +21,465 @@ using namespace boost::endian;
 
 //  Convert a four-char-code (big endian 32-bit integer) to a string of 4 characters.
 inline string fourcc2str(fourcc_t fcc) {
-	return string(reinterpret_cast<const char*>(&fcc), 4);
+	char buf[5] = {0};
+	uint32_t val = fcc; // already big-endian
+	memcpy(buf, &val, 4);
+	return string(buf);
 }
-
-inline fourcc_t short2hexFourcc(const uint16_t in) {
-	return *reinterpret_cast<fourcc_t*>(format("{:04X}", in).data());
-}
-
-inline uint16_t hexFourcc2short(fourcc_t fcc) {
-	return strtol(fourcc2str(fcc).c_str(), nullptr, 16);
-}
-
-uint32_t chunkVector::getHeaderSize(bool is_littleEndian) {
-	uint32_t totalSize = 0;
-	if (is_littleEndian) {
-		for (auto& chunk : *this) {
-			switch (chunk->id) {
-				// case 'SSND':
-				// 	totalSize += 16;
-				// 	break;
-
-				case 'data':
-					totalSize += 8;
-					break;
-
-				case 'big1':
-					break;
-
-				default:
-					totalSize += 8;
-					totalSize += chunk->lSize;
-					break;
-			}
-		}
-	}
-	else {
-		for (auto& chunk : *this) {
-			switch (chunk->id) {
-				case 'SSND':
-					totalSize += 16;
-					break;
-
-				// case 'data':
-				// 	totalSize += 8;
-				// 	break;
-
-				case 'big1':
-					break;
-
-				default:
-					totalSize += 8;
-					totalSize += chunk->bSize;
-					break;
-			}
-		}
-	}
-	return totalSize;
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-AudioFile::AudioFile(const filesystem::path& fPath) : the_file_path(fPath) {
-	//	Do basic checks.
-	if (!filesystem::exists(this->the_file_path)) throw runtime_error("File not found.");
-	if (!filesystem::is_regular_file(this->the_file_path)) throw runtime_error("Not a regular file.");
+// Chunk Implementations
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	//	Open file.
-	this->file_access.open(this->the_file_path.string(), ios_base::in | ios_base::out | ios_base::binary);
+std::vector<uint8_t> Chunk::serialize(bool isLittleEndian) const {
+	std::vector<uint8_t> payload = serializePayload(isLittleEndian);
+	uint32_t size = static_cast<uint32_t>(payload.size());
+
+	std::vector<uint8_t> result;
+	result.resize(8 + size); // Header + Payload
+
+	// Header
+	uint32_t idVal = id; // ID is always big-endian (FourCC)
+	memcpy(result.data(), &idVal, 4);
+
+	if (isLittleEndian) {
+		little_uint32_t s = size;
+		memcpy(result.data() + 4, &s, 4);
+	} else {
+		big_uint32_t s = size;
+		memcpy(result.data() + 4, &s, 4);
+	}
+
+	// Payload
+	memcpy(result.data() + 8, payload.data(), size);
+
+	return result;
+}
+
+std::vector<uint8_t> WaveFmtChunk::serializePayload(bool isLittleEndian) const {
+	std::vector<uint8_t> data(16 + extension.size());
+
+	if (isLittleEndian) {
+		little_uint16_t ft = formatTag;
+		little_uint16_t nc = numChannels;
+		little_uint32_t sr = sampleRate;
+		little_uint32_t bps = bytesPerSec;
+		little_uint16_t ba = blockAlign;
+		little_uint16_t bips = bitsPerSample;
+
+		memcpy(data.data(), &ft, 2);
+		memcpy(data.data() + 2, &nc, 2);
+		memcpy(data.data() + 4, &sr, 4);
+		memcpy(data.data() + 8, &bps, 4);
+		memcpy(data.data() + 12, &ba, 2);
+		memcpy(data.data() + 14, &bips, 2);
+	} else {
+		// Should not happen for WAVE, but for completeness
+		big_uint16_t ft = formatTag;
+		big_uint16_t nc = numChannels;
+		big_uint32_t sr = sampleRate;
+		big_uint32_t bps = bytesPerSec;
+		big_uint16_t ba = blockAlign;
+		big_uint16_t bips = bitsPerSample;
+
+		memcpy(data.data(), &ft, 2);
+		memcpy(data.data() + 2, &nc, 2);
+		memcpy(data.data() + 4, &sr, 4);
+		memcpy(data.data() + 8, &bps, 4);
+		memcpy(data.data() + 12, &ba, 2);
+		memcpy(data.data() + 14, &bips, 2);
+	}
+
+	if (!extension.empty()) {
+		memcpy(data.data() + 16, extension.data(), extension.size());
+	}
+
+	return data;
+}
+
+std::vector<uint8_t> AiffCommChunk::serializePayload(bool isLittleEndian) const {
+	// AIFF is Big Endian
+	std::vector<uint8_t> data(18 + (compressionName.empty() ? 0 : 4 + 1 + compressionName.size() + (compressionName.size() % 2)));
+
+	big_uint16_t nc = numChannels;
+	big_uint32_t nsf = numSampleFrames;
+	big_uint16_t ss = sampleSize;
+
+	memcpy(data.data(), &nc, 2);
+	memcpy(data.data() + 2, &nsf, 4);
+	memcpy(data.data() + 6, &ss, 2);
+
+	BigFloat80 bf80(sampleRate);
+	memcpy(data.data() + 8, bf80.rawData(), 10);
+
+	if (!compressionName.empty() || compressionType != 0) {
+		size_t offset = 18;
+		uint32_t ct = compressionType; // FourCC is big endian
+		memcpy(data.data() + offset, &ct, 4);
+		offset += 4;
+
+		uint8_t len = static_cast<uint8_t>(compressionName.size());
+		memcpy(data.data() + offset, &len, 1);
+		offset += 1;
+
+		memcpy(data.data() + offset, compressionName.data(), len);
+		offset += len;
+
+		if (len % 2 == 0) { // Pad byte if even length (total size must be even, pstring includes count byte)
+			data[offset] = 0;
+		}
+	}
+
+	return data;
+}
+
+std::vector<uint8_t> DataChunk::serializePayload(bool isLittleEndian) const {
+	// This only serializes the header part of the payload (offset/blockSize for AIFF)
+	// The actual audio data is handled separately during flush/write
+	if (id == fourcc_t('SSND')) {
+		std::vector<uint8_t> data(8);
+		big_uint32_t off = offset;
+		big_uint32_t bs = blockSize;
+		memcpy(data.data(), &off, 4);
+		memcpy(data.data() + 4, &bs, 4);
+		return data;
+	}
+	return {}; // WAVE 'data' chunk has no prefix in payload
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// AudioFile Implementation
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+AudioFile::AudioFile(const filesystem::path& fPath, ios_base::openmode mode) : the_file_path(fPath) {
+	if (!filesystem::exists(this->the_file_path)) throw FileNotFound(this->the_file_path.string());
+	if (!filesystem::is_regular_file(this->the_file_path)) throw NotARegularFile(this->the_file_path.string());
+
+	// Always need binary
+	mode |= ios_base::binary;
+
+	this->file_access.open(this->the_file_path.string(), mode);
 	if (this->file_access.fail())
-		throw invalid_argument("There was a problem opening the input file.");
+		throw FileOpenError("There was a problem opening the input file.");
 
-	//	Read start of file to see what it is.
-	//	WAVE and AIFF audio files always have a 12 byte header, always the first chunk.
-	this->file_access.read(reinterpret_cast<char*>(&this->header), 12);
-
-	switch (this->header.id) {
-		case 'RIFF':
-		case 'RF64':
-			if (this->header.type != 'WAVE')
-				throw runtime_error("ERROR: Unknown media type.");
-			this->base_type = BASE_TYPE_WAVE;
-			this->file_size = this->header.lSize; //	will change if RF64
-			break;
-
-		case 'FORM':
-			if (this->header.type != 'AIFF' && this->header.type != 'AIFC')
-				throw runtime_error("ERROR: Unknown media type.");
-			this->base_type = BASE_TYPE_AIFF;
-			this->file_size = this->header.bSize;
-			break;
-
-		default:
-			throw runtime_error("ERROR: Unknow file type or file type not handled.");
-	}
-
-	////////////////////////////////////////////////////////////////////////////////////////////////
-	//	Look for Chunks and store appropriately.
-	audioFileHeader_t       chunkExam;
-	const fstream::pos_type examSize = 8; //	Only load and use the first two fields of chunkExam.
-	char*                   chunkPtr;
-
-	do {
-		this->file_access.read(reinterpret_cast<char*>(&chunkExam), examSize);
-		this->file_access.seekg(-examSize, ios_base::cur);
-		fstream::pos_type wholeChunkSize = (this->is_littleEndian() ? chunkExam.lSize : chunkExam.bSize) + examSize;
-
-		switch (chunkExam.id) {
-			case 'data':
-				break;
-
-			case 'SSND':
-				wholeChunkSize = sizeof(SSND_t); //	id, size, offset, and blockSize; total == 16
-			//	fall through
-			default:
-				chunkPtr = new char[wholeChunkSize];
-				this->file_access.read(chunkPtr, wholeChunkSize);
-				this->chunk.emplace_back(reinterpret_cast<chunks_t*>(chunkPtr));
-				break;
-		}
-
-		chunks_t*         dataChunk;
-		fstream::pos_type offset;
-		switch (chunkExam.id) {
-			case 'fmt ':
-			case 'COMM':
-				this->format = this->chunk.back().get();
-				break;
-
-			case 'fact':
-				//	Only set if not already set. Might be set by ds64 chunk.
-				if (this->frame_count == -1)
-					this->frame_count = this->chunk.back()->fact.samples;
-				break;
-
-			case 'ds64': //	will only be in RF64
-				this->file_size = this->chunk.back()->ds64.riffSize;
-				this->data_size   = this->chunk.back()->ds64.dataSize;
-				this->frame_count = this->chunk.back()->ds64.sampleCount;
-				break;
-
-			case 'data':
-				//	WAVE data chunk has not been read.
-				dataChunk = reinterpret_cast<chunks_t*>(new char[8]);
-				dataChunk->data.id   = chunkExam.id; //	data
-				dataChunk->data.size = chunkExam.lSize;
-				this->chunk.emplace_back(reinterpret_cast<chunks_t*>(dataChunk));
-				//	Get start point of sound data.
-				this->data_start = this->file_access.tellg() + examSize;
-
-				if (this->header.id == 'RIFF') {
-					this->data_size = chunkExam.lSize;
-					if (this->frame_count == -1) //	If frame_count not already set by fact chunk.
-						this->frame_count = this->data_size / this->format->fmt_.blockAlignment;
-				}
-				else {
-					//	RF64
-					if (this->data_size == -1)
-						throw runtime_error("DataSize not yet set by ds64.\nIs the 'ds64' chunk before 'data' chunk?");
-				}
-
-				//	Jump read pointer to end of sound data.
-				this->file_access.seekg(examSize + this->data_size, ios_base::cur);
-				break;
-
-			case 'SSND':
-				if (this->chunk.back()->SSND.blockSize != 0) //	frame size?
-					throw runtime_error("Can't handle files with SSND.blockSize set to other than zero.");
-
-				offset           = static_cast<fstream::pos_type>(this->chunk.back()->SSND.offset);
-				this->data_start = this->file_access.tellg() + offset;
-				//	minus sizeof offset, blockSize, and offset value
-				this->data_size = this->chunk.back()->SSND.size - (8 + offset);
-
-				this->frame_count = this->format->COMM.numSampleFrames;
-
-				//	Jump read pointer to end of sound data.
-				//	"minus 8" because we're already pointing past offset and blockSize
-				this->file_access.seekg(this->chunk.back()->SSND.size - 8, ios_base::cur);
-				break;
-
-
-			default:
-				break;
-		}
-	}
-	while (this->file_access.good());
+	this->parseHeader();
 }
 
 AudioFile::AudioFile(
-		const filesystem::path&   fPath,
-		const uint32_t            sampleRate,
-		const uint16_t            sampleSize,
-		const uint16_t            numChan,
-		const fourcc_t            encoding,
-		const baseAudioFileType_t baseType
-	) : the_file_path(fPath), base_type(baseType) {
+	const filesystem::path& fPath,
+	baseAudioFileType_t     type,
+	uint32_t                sampleRate,
+	uint16_t                numChannels,
+	uint16_t                bitsPerSample,
+	bool                    isFloat
+) : the_file_path(fPath), base_type(type) {
 	if (filesystem::exists(this->the_file_path))
-		throw runtime_error("File already exists.");
+		throw FileExists(this->the_file_path.string());
 
-	// Create and own the format chunk immediately
-	chunks_t* rawFormat = reinterpret_cast<chunks_t*>(new char[sizeof(chunks_t)]);
-	this->chunk.emplace_back(rawFormat);
-	this->format = rawFormat;
+	// Create empty file
+	this->file_access.open(this->the_file_path.string(), ios_base::in | ios_base::out | ios_base::trunc | ios_base::binary);
+	if (this->file_access.fail())
+		throw FileOpenError("Could not create file.");
 
-	this->bytes_per_frame = ceil(sampleSize / 8.0) * numChan;
+	format.sampleRate = sampleRate;
+	format.numChannels = numChannels;
+	format.bitsPerSample = bitsPerSample;
+	format.bytesPerFrame = (numChannels * bitsPerSample + 7) / 8; // rounded up
+	format.isFloatingPoint = isFloat;
+	format.isLittleEndian = (type == BASE_TYPE_WAVE);
+	format.encoding = isFloat ? fourcc_t('IEEE') : fourcc_t('PCM ');
 
-	switch (this->base_type) {
-		case BASE_TYPE_WAVE:
-			this->header.id = 'RIFF';
-			this->header.lSize                = 0;
-			this->header.type                 = 'WAVE';
-			this->format->fmt_.id             = 'fmt ';
-			this->format->fmt_.size           = sizeof(FormatData_t) - sizeof(waveChunkHead_t);
-			this->format->fmt_.type           = hexFourcc2short(encoding);
-			this->format->fmt_.channelCount   = numChan;
-			this->format->fmt_.sampleRate     = sampleRate;
-			this->format->fmt_.bytesPerSecond = sampleRate * this->bytes_per_frame; //	can depend on encoding
-			this->format->fmt_.blockAlignment = this->bytes_per_frame;
-			this->format->fmt_.bitsPerSample  = sampleSize;
-			break;
+    if (type == BASE_TYPE_WAVE) {
+        auto fmt = std::make_shared<WaveFmtChunk>();
+        fmt->sampleRate = sampleRate;
+        fmt->numChannels = numChannels;
+        fmt->bitsPerSample = bitsPerSample;
+        fmt->blockAlign = format.bytesPerFrame;
+        fmt->bytesPerSec = sampleRate * format.bytesPerFrame;
+        fmt->formatTag = isFloat ? 0x0003 : 0x0001;
+        m_formatChunk = fmt;
+        m_chunks.push_back(fmt);
 
-		case BASE_TYPE_AIFF:
-			this->header.id = 'FORM';
-			this->header.bSize                 = 0;
-			this->header.type                  = 'AIFF';
-			this->format->COMM.id              = 'COMM';
-			this->format->COMM.numChannels     = numChan;
-			this->format->COMM.numSampleFrames = 0;
-			this->format->COMM.sampleSize      = sampleSize;
-			this->format->COMM.sampleRate      = sampleRate;
-			switch (encoding) {
-				case 0:
-				case '    ':
-				case 'PCM ':
-				case '0001':
-					this->format->COMM.size = sizeof(commChunk_t) - 8;
-					break;
+        m_dataChunk = std::make_shared<DataChunk>(fourcc_t('data'));
+        m_chunks.push_back(m_dataChunk);
+    } else if (type == BASE_TYPE_AIFF) {
+        auto comm = std::make_shared<AiffCommChunk>();
+        comm->sampleRate = sampleRate;
+        comm->numChannels = numChannels;
+        comm->sampleSize = bitsPerSample;
+        comm->numSampleFrames = 0;
+        m_formatChunk = comm;
+        m_chunks.push_back(comm);
 
-				default:
-					//	Final size depends on length of COMM.compressionName which has a maximum 256 bytes.
-					this->format->COMM.size = sizeof(commExtChunk_t) - 8;
-					this->format->COMM.compressionType = encoding;
-					//	Pascal, length prefixed string, 0-255.
-					//	contains 1 to 256 bytes (must be even)
-					//	Last byte should be zero or null
-					this->format->COMM.compressionName[0] = 0;
-					break;
-			}
-			break;
+        m_dataChunk = std::make_shared<DataChunk>(fourcc_t('SSND'));
+        m_chunks.push_back(m_dataChunk);
+    } else {
+        throw UnsupportedFormat("Unsupported base file type for creation.");
+    }
+}
 
-		default:
-			throw runtime_error("Currently, only WAVE and AIFF files can be created.");
+AudioFile::~AudioFile() {
+	if (file_access.is_open()) {
+		try {
+			flush();
+		} catch (...) {}
+		file_access.close();
 	}
 }
 
+AudioFile::AudioFile(AudioFile&& other) noexcept
+    : the_file_path(std::move(other.the_file_path)),
+      file_access(std::move(other.file_access)),
+      base_type(other.base_type),
+      format(other.format),
+      m_chunks(std::move(other.m_chunks)),
+      m_dataChunk(std::move(other.m_dataChunk)),
+      m_formatChunk(std::move(other.m_formatChunk)),
+      m_readPos(other.m_readPos),
+      m_writePos(other.m_writePos)
+{
+    // Invalidate other
+    other.base_type = BASE_TYPE_UNKNOWN;
+}
 
-AudioFile::~AudioFile() {
-	// Chunk vector cleans up itself now.
-};
+AudioFile& AudioFile::operator=(AudioFile&& other) noexcept {
+    if (this != &other) {
+        // Clean up current
+        if (file_access.is_open()) {
+            try { flush(); } catch(...) {}
+            file_access.close();
+        }
 
+        const_cast<filesystem::path&>(the_file_path) = std::move(other.the_file_path);
+        file_access = std::move(other.file_access);
+        base_type = other.base_type;
+        format = other.format;
+        m_chunks = std::move(other.m_chunks);
+        m_dataChunk = std::move(other.m_dataChunk);
+        m_formatChunk = std::move(other.m_formatChunk);
+        m_readPos = other.m_readPos;
+        m_writePos = other.m_writePos;
+
+        other.base_type = BASE_TYPE_UNKNOWN;
+    }
+    return *this;
+}
+
+std::unique_ptr<AudioFile> AudioFile::Builder::build() {
+    if (m_path.empty()) throw std::invalid_argument("Path cannot be empty.");
+    return std::make_unique<AudioFile>(
+        m_path,
+        m_type,
+        m_sampleRate,
+        m_numChannels,
+        m_bitsPerSample,
+        m_isFloat
+    );
+}
+
+bool AudioFile::isReserved(fourcc_t id) const {
+	if (base_type == BASE_TYPE_WAVE) {
+		return (id == fourcc_t('RIFF') || id == fourcc_t('RF64') || id == fourcc_t('fmt ') ||
+				id == fourcc_t('data') || id == fourcc_t('ds64') || id == fourcc_t('fact') || id == fourcc_t('JUNK'));
+	}
+
+	return (id == fourcc_t('FORM') || id == fourcc_t('COMM') || id == fourcc_t('SSND') ||
+			id == fourcc_t('FVER') || id == fourcc_t('PAD '));
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void AudioFile::parseHeader() {
+	m_chunks.clear();
+	m_readPos = 0;
+	m_writePos = 0;
+
+	fourcc_t id;
+	file_access.seekg(0);
+	file_access.read(reinterpret_cast<char*>(&id), 4);
+	file_access.seekg(0);
+
+	if (id == fourcc_t('RIFF') || id == fourcc_t('RF64')) {
+		parseWAVE();
+	} else if (id == fourcc_t('FORM')) {
+		parseAIFF();
+	} else {
+		throw InvalidHeader("Unknown file header: " + fourcc2str(id));
+	}
+    syncFormatFromChunks();
+}
+
+void AudioFile::parseWAVE() {
+	waveFileHeader_t header;
+	file_access.read(reinterpret_cast<char*>(&header), 12);
+
+	if (header.type != fourcc_t('WAVE')) throw InvalidHeader("Not a WAVE file.");
+
+	base_type = BASE_TYPE_WAVE;
+
+	while (file_access) {
+		fourcc_t chunkID;
+		little_uint32_t chunkSize;
+
+		file_access.read(reinterpret_cast<char*>(&chunkID), 4);
+		if (file_access.gcount() < 4) break;
+
+		file_access.read(reinterpret_cast<char*>(&chunkSize), 4);
+		if (file_access.gcount() < 4) break;
+
+		uint64_t size = chunkSize;
+        uint64_t startOfPayload = file_access.tellg();
+
+		if (chunkID == fourcc_t('fmt ')) {
+			auto chunk = std::make_shared<WaveFmtChunk>();
+            file_access.read(reinterpret_cast<char*>(&chunk->formatTag), 2);
+            file_access.read(reinterpret_cast<char*>(&chunk->numChannels), 2);
+            file_access.read(reinterpret_cast<char*>(&chunk->sampleRate), 4);
+            file_access.read(reinterpret_cast<char*>(&chunk->bytesPerSec), 4);
+            file_access.read(reinterpret_cast<char*>(&chunk->blockAlign), 2);
+            file_access.read(reinterpret_cast<char*>(&chunk->bitsPerSample), 2);
+
+            if (size > 16) {
+                uint16_t cbSize;
+                file_access.read(reinterpret_cast<char*>(&cbSize), 2);
+                chunk->extension.resize(cbSize);
+                file_access.read(reinterpret_cast<char*>(chunk->extension.data()), cbSize);
+            }
+            m_formatChunk = chunk;
+			m_chunks.push_back(chunk);
+		}
+		else if (chunkID == fourcc_t('data')) {
+            m_dataChunk = std::make_shared<DataChunk>(fourcc_t('data'));
+            m_dataChunk->fileOffset = startOfPayload;
+			m_dataChunk->payloadSize = static_cast<uint32_t>(size);
+
+			if (size == 0xFFFFFFFF) {
+				for(auto& c : m_chunks) {
+					if (c->id == fourcc_t('ds64')) {
+						auto unk = std::dynamic_pointer_cast<UnknownChunk>(c);
+                        if (unk && unk->payload.size() >= 16) {
+                            memcpy(&m_dataChunk->payloadSize, unk->payload.data() + 8, 8);
+                        }
+						break;
+					}
+				}
+			}
+			m_chunks.push_back(m_dataChunk);
+			file_access.seekg(startOfPayload + size, ios_base::beg);
+		}
+        else if (chunkID == fourcc_t('JUNK')) {
+            file_access.seekg(startOfPayload + size, ios_base::beg);
+        }
+		else {
+			std::vector<uint8_t> payload(size);
+			if (size > 0) {
+				file_access.read(reinterpret_cast<char*>(payload.data()), size);
+			}
+            auto chunk = std::make_shared<UnknownChunk>(chunkID, payload);
+			m_chunks.push_back(chunk);
+		}
+
+		if (size % 2 != 0) {
+			file_access.seekg(1, ios_base::cur);
+		}
+	}
+	m_readPos = 0;
+	m_writePos = 0;
+}
+
+void AudioFile::parseAIFF() {
+	aiffFileHeader_t header;
+	file_access.read(reinterpret_cast<char*>(&header), 12);
+
+	if (header.type != fourcc_t('AIFF') && header.type != fourcc_t('AIFC')) throw InvalidHeader("Not an AIFF file.");
+	base_type = BASE_TYPE_AIFF;
+
+	while (file_access) {
+		fourcc_t chunkID;
+		big_uint32_t chunkSize;
+
+		file_access.read(reinterpret_cast<char*>(&chunkID), 4);
+		if (file_access.gcount() < 4) break;
+
+		file_access.read(reinterpret_cast<char*>(&chunkSize), 4);
+		if (file_access.gcount() < 4) break;
+
+		uint64_t size = chunkSize;
+        uint64_t startOfPayload = file_access.tellg();
+
+		if (chunkID == fourcc_t('COMM')) {
+			auto chunk = std::make_shared<AiffCommChunk>();
+            file_access.read(reinterpret_cast<char*>(&chunk->numChannels), 2);
+            file_access.read(reinterpret_cast<char*>(&chunk->numSampleFrames), 4);
+            file_access.read(reinterpret_cast<char*>(&chunk->sampleSize), 2);
+
+            uint8_t exp[10];
+            file_access.read(reinterpret_cast<char*>(exp), 10);
+            BigFloat80 bf80(reinterpret_cast<const char*>(exp));
+            chunk->sampleRate = bf80.toDouble();
+
+            if (size > 18) {
+                file_access.read(reinterpret_cast<char*>(&chunk->compressionType), 4);
+                uint8_t nameLen;
+                file_access.read(reinterpret_cast<char*>(&nameLen), 1);
+                chunk->compressionName.resize(nameLen);
+                file_access.read(reinterpret_cast<char*>(chunk->compressionName.data()), nameLen);
+            }
+
+            m_formatChunk = chunk;
+			m_chunks.push_back(chunk);
+		}
+		else if (chunkID == fourcc_t('SSND')) {
+            m_dataChunk = std::make_shared<DataChunk>(fourcc_t('SSND'));
+            file_access.read(reinterpret_cast<char*>(&m_dataChunk->offset), 4);
+            file_access.read(reinterpret_cast<char*>(&m_dataChunk->blockSize), 4);
+
+			m_dataChunk->fileOffset = (uint64_t)file_access.tellg() + (uint32_t)m_dataChunk->offset;
+			m_dataChunk->payloadSize = static_cast<uint32_t>(size) - 8 - (uint32_t)m_dataChunk->offset;
+
+            m_chunks.push_back(m_dataChunk);
+			file_access.seekg(startOfPayload + size, ios_base::beg);
+		}
+        else if (chunkID == fourcc_t('PAD ')) {
+            file_access.seekg(startOfPayload + size, ios_base::beg);
+        }
+		else {
+			std::vector<uint8_t> payload(size);
+			if (size > 0) {
+				file_access.read(reinterpret_cast<char*>(payload.data()), size);
+			}
+            auto chunk = std::make_shared<UnknownChunk>(chunkID, payload);
+			m_chunks.push_back(chunk);
+		}
+
+		if (size % 2 != 0) {
+			file_access.seekg(1, ios_base::cur);
+		}
+	}
+	m_readPos = 0;
+	m_writePos = 0;
+}
+
+void AudioFile::syncFormatFromChunks() {
+    if (auto waveFmt = std::dynamic_pointer_cast<WaveFmtChunk>(m_formatChunk)) {
+        format.sampleRate = waveFmt->sampleRate;
+        format.numChannels = waveFmt->numChannels;
+        format.bitsPerSample = waveFmt->bitsPerSample;
+        format.bytesPerFrame = waveFmt->blockAlign;
+        format.isFloatingPoint = (waveFmt->formatTag == 0x0003);
+        format.isLittleEndian = true;
+        format.encoding = format.isFloatingPoint ? fourcc_t('IEEE') : fourcc_t('PCM ');
+    } else if (auto aiffComm = std::dynamic_pointer_cast<AiffCommChunk>(m_formatChunk)) {
+        format.sampleRate = static_cast<uint32_t>(aiffComm->sampleRate);
+        format.numChannels = aiffComm->numChannels;
+        format.bitsPerSample = aiffComm->sampleSize;
+        format.bytesPerFrame = (format.numChannels * format.bitsPerSample + 7) / 8;
+        format.isFloatingPoint = (aiffComm->compressionType == fourcc_t('fl32') || aiffComm->compressionType == fourcc_t('FL32'));
+        format.isLittleEndian = (aiffComm->compressionType == fourcc_t('sowt') || aiffComm->compressionType == fourcc_t('swot'));
+        format.encoding = (aiffComm->compressionType == fourcc_t(0)) ? fourcc_t('PCM ') : aiffComm->compressionType;
+    }
+}
+
 string AudioFile::getFileName() const {
 	return string(this->the_file_path.filename());
 }
@@ -288,284 +488,283 @@ baseAudioFileType_t AudioFile::getBaseType() const {
 	return this->base_type;
 }
 
-bool AudioFile::is_pcm() const {
-	auto type = this->getDataEncoding();
-	if (type == '0001' || type == 'PCM ')
-		return true;
-	return false;
+const AudioFormat& AudioFile::getFormat() const {
+	return this->format;
 }
 
-bool AudioFile::is_ieee() const {
-	auto type = this->getDataEncoding();
-	if (type == '0003' || type == 'fl32')
-		return true;
-	return false;
-};
-
-bool AudioFile::is_littleEndian() const {
-	return this->base_type == BASE_TYPE_WAVE;
-};
-
-uint32_t AudioFile::getFormatSize() const {
-	switch (this->format->id) {
-		case 'fmt ':
-			return this->format->fmt_.size;
-
-		case'COMM':
-			return this->format->COMM.size;
-	}
-	return 0;
-};
-
-uint16_t AudioFile::getNumChannels() const {
-	switch (this->format->id) {
-		case 'fmt ':
-			return static_cast<uint16_t>(this->format->fmt_.channelCount);
-
-		case'COMM':
-			return this->format->COMM.numChannels;
-	}
-	return 0;
-};
-
-uint32_t AudioFile::getSampleRate() {
-	switch (this->format->id) {
-		case 'fmt ':
-			return this->format->fmt_.sampleRate;
-
-		case'COMM':
-			return static_cast<uint32_t>(this->format->COMM.sampleRate());
-	}
-	return 0;
-};
-
-uint16_t AudioFile::getBitsPerSample() const {
-	switch (this->format->id) {
-		case 'fmt ':
-			return this->format->fmt_.bitsPerSample;
-
-		case'COMM':
-			return this->format->COMM.sampleSize;
-	}
-	return 0;
-};
-
-int64_t AudioFile::getNumFrames() const { return this->frame_count; };
-
-int64_t AudioFile::getNumSamples() const { return this->frame_count * this->getNumChannels(); };
-
-int64_t AudioFile::getDataSize() const { return this->data_size; };
-
-fourcc_t AudioFile::getDataEncoding() const {
-	switch (this->format->id) {
-		case 'fmt ':
-			return short2hexFourcc(this->format->fmt_.type);
-
-		case'COMM':
-			//	If > 18 it must be an AIFC file
-			if (this->format->COMM.size > 18)
-				return this->format->COMM.compressionType;
-			else
-				return 'PCM ';
-	}
-
-	return 0;
-};
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-vector<unsigned char> AudioFile::ReadAllData() {
-	if (!filesystem::exists(this->the_file_path))
-		throw runtime_error("File not found.");
-
-	if (!this->file_access.is_open())
-		this->file_access.open(this->the_file_path.string(), ios_base::in | ios_base::out | ios_base::binary);
-
-	vector<unsigned char> data(this->data_size);
-	this->file_access.clear();
-	this->file_access.seekg(this->data_start);
-	this->file_access.read(reinterpret_cast<char*>(data.data()), this->data_size);
-	return data;
+int64_t AudioFile::getNumFrames() const {
+	if (format.bytesPerFrame == 0) return 0;
+	return m_dataChunk->payloadSize / format.bytesPerFrame;
 }
 
-//	Write new data to existing data block. Other chunks are not changed.
-void AudioFile::WriteAllData(span<const unsigned char> data) {
-	if (!filesystem::exists(this->the_file_path)) throw runtime_error("File does not yet exist.");
-	if (data.size() != this->data_size) {
-		// Or strictly enforce? For now, just warning or error might be better. 
-		// The original code assumed size matched data_size. 
-		// If we throw here, we are safer.
-		// However, ReadAllData allocates data_size. If user modified vector, size might change?
-		// AudioFile::WriteAllData implies writing back the *entire* data chunk content.
-		// If size mismatch, we might be truncating or overflowing the designated chunk space in the file.
-		// Given the function name, throwing is appropriate.
-		// throw length_error("Data size does not match file data chunk size.");
-		// But let's stick closer to original behavior but safer: write whatever is passed but warn if mismatch?
-		// No, let's just use data.size() to write, but if it's larger than allocated space in file, we have a problem.
-		// The original code used 'this->data_size' as the write count.
-		// So we should probably check.
-	}
-	
-	this->file_access.clear();
-	this->file_access.seekp(this->data_start);
-	this->file_access.write(reinterpret_cast<const char*>(data.data()), data.size()); 
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//	Adds pointer to chunk vector and returns index of inserted chunk.
-uint16_t AudioFile::addChunk(chunks_t* chk) {
-	this->chunk.emplace_back(chk);
-	return this->chunk.size() - 1;
-}
-
-uint16_t AudioFile::getChunkCount() const {
-	return this->chunk.size();
-}
-
-//	Returns pointer to chunk at the index.
-const chunks_t* AudioFile::getChunk(const uint16_t index) {
-	return this->chunk.at(index).get();
-}
-
-//	Returns the total size of all chunks, except just the header of sound data.
-size_t AudioFile::getAllChunksSize() {
-	size_t allChunksSize = 12;                                           //	file head; id, size, type
-	allChunksSize += this->chunk.getHeaderSize(this->is_littleEndian()); //	other chunk sizes, but now audio data proper
-	return allChunksSize;
-}
-
-
-void AudioFile::writeUpdatedHeader() {
-	//	write all but sound data chunks
-	//	Assumes file is already open.
-	this->file_access.seekp(0, ios_base::beg);
-	this->file_access.write(reinterpret_cast<const char*>(&this->header), 12);
-	for (auto& chnkPtr : this->chunk) {
-		auto chnk = chnkPtr.get();
-		if (chnk->id != 'data' && chnk->id != 'SSND') {
-			streamsize chunkSize = this->is_littleEndian() ? chnk->lSize : chnk->bSize;
-			this->file_access.write(reinterpret_cast<const char*>(chnk), chunkSize); // chnk is pointer, &chnk was ptr to ptr
-		}
-	}
-
-	//	Be sure all is filled up to the start of data/SSND chunk
-	//	DataStart minus what we've done, and minus 8 for JUNK/elm1 data header.
-	int32_t fill = this->data_start - this->getAllChunksSize() - 8;
-	if (fill < 8)
-		throw runtime_error("Header size has increased beyond what was originally created.");
-
-	if (this->is_littleEndian()) {
-		waveData_t* JUNK = reinterpret_cast<waveData_t*>(new char[fill]);
-		JUNK->id         = 'JUNK';
-		JUNK->size       = fill - 8;
-		this->file_access.write(reinterpret_cast<const char*>(JUNK), fill);
-		delete[] reinterpret_cast<char*>(JUNK); // Manual delete here as it's temp
-	}
-	else {
-		fill -= 8; //	minus 8 more to cover rest of SSND chunk
-		aChunk_t* elm1 = reinterpret_cast<aChunk_t*>(new char[fill]);
-		elm1->id       = 'elm1';
-		elm1->size     = fill - 8;
-		this->file_access.write(reinterpret_cast<const char*>(elm1), fill);
-		delete[] reinterpret_cast<char*>(elm1); // Manual delete here as it's temp
-	}
-
-	//	Write header of sound data chunk.
-	for (auto& chnkPtr : this->chunk) {
-		auto chnk = chnkPtr.get();
-		switch (chnk->id) {
-			case 'data':
-				this->file_access.write(reinterpret_cast<const char*>(chnk), 8);
-				break;
-
-			case 'SSND':
-				this->file_access.write(reinterpret_cast<const char*>(chnk), 16);
-				break;
-
-			default:
-				break;
-		}
-	}
-	// data_start should equal seekp here
-}
-
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-void AudioFile::writeNewHeader() {
-	//	Create file if not exists with basic metadata.
-	//		AIFF generally starts chunk at 512 byte boundary.
-	//		WAVE generally starts chunk at 4096 byte boundary.
-
-	if (this->data_start != 0)
-		throw runtime_error("File already has header.");
-
-	if (!this->file_access.is_open())
-		this->file_access.open(this->the_file_path.string(), ios_base::in | ios_base::out | ios_base::binary);
-
-	size_t totalSize = this->getAllChunksSize();
-	this->data_start = this->base_type == BASE_TYPE_WAVE ? 4096 : 512;
-
-	//	increase size to contain all header chunks
-	while (totalSize > (this->data_start - 8)) this->data_start *= 2;
-
-	this->writeUpdatedHeader();
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// seek relative to start of data
-void AudioFile::seekp_data(uint64_t pos, ios_base::seekdir dir) {
+void AudioFile::seekg(int64_t offset, ios_base::seekdir dir) {
+	int64_t target = 0;
 	switch (dir) {
-		case ios_base::beg:
-			this->data_write_pos = pos;
-			break;
-
-		case ios_base::cur:
-			this->data_write_pos += pos;
-			break;
-
-		case ios_base::end:
-			this->data_write_pos = this->data_size - pos;
-			break;
+		case ios_base::beg: target = offset; break;
+		case ios_base::cur: target = m_readPos + offset; break;
+		case ios_base::end: target = m_dataChunk->payloadSize + offset; break;
 	}
-	if (this->data_write_pos < 0) this->data_write_pos = 0;
-
-	this->file_access.seekp(this->data_write_pos + this->data_start, ios_base::beg);
+	if (target < 0) target = 0;
+	m_readPos = target;
 }
 
-uint64_t AudioFile::tellp_data() {
-	return this->data_write_pos;
+uint64_t AudioFile::tellg() { return m_readPos; }
+
+void AudioFile::seekp(int64_t offset, ios_base::seekdir dir) {
+	int64_t target = 0;
+	switch (dir) {
+		case ios_base::beg: target = offset; break;
+		case ios_base::cur: target = m_writePos + offset; break;
+		case ios_base::end: target = m_dataChunk->payloadSize + offset; break;
+	}
+	if (target < 0) target = 0;
+	m_writePos = target;
 }
 
-void AudioFile::write(const char* data, uint64_t size) {
-	if (this->data_start == 0)
-		throw runtime_error("Must write header before writing data.");
+uint64_t AudioFile::tellp() { return m_writePos; }
 
-	if (!this->file_access.is_open())
-		throw runtime_error("File not open.");
+void AudioFile::read(void* buffer, size_t size) {
+	if (m_readPos >= m_dataChunk->payloadSize) return;
 
-	//	Append size bytes of data to existing data.
-	//	Update header to reflect new size
-	this->seekp_data(0, ios_base::cur);
-	this->file_access.write(data, size);
-	this->data_size += size;
+    // If we have data in memory, read from there (it's the most up-to-date)
+    if (!m_dataChunk->memoryBuffer.empty()) {
+        size_t toRead = size;
+        if (m_readPos + size > m_dataChunk->memoryBuffer.size()) {
+            toRead = m_dataChunk->memoryBuffer.size() - m_readPos;
+        }
+        memcpy(buffer, m_dataChunk->memoryBuffer.data() + m_readPos, toRead);
+        m_readPos += toRead;
+        return;
+    }
 
-	this->data_write_pos = static_cast<int64_t>(this->file_access.tellp()) - this->data_start;
+    // Otherwise read from file
+	file_access.clear();
+	file_access.seekg(m_dataChunk->fileOffset + (std::streamoff)m_readPos);
+	size_t toRead = size;
+	if (m_readPos + size > m_dataChunk->payloadSize) toRead = m_dataChunk->payloadSize - m_readPos;
+	file_access.read(reinterpret_cast<char*>(buffer), toRead);
+	m_readPos += file_access.gcount();
+}
 
-	int64_t fSize = filesystem::file_size(this->the_file_path);
+void AudioFile::write(const void* buffer, size_t size) {
+    // If memory buffer is empty but we have file data, we MUST load it first
+    // because we can't safely modify the file in-place/append without breaking 'flush'
+    if (m_dataChunk->memoryBuffer.empty() && m_dataChunk->payloadSize > 0 && m_dataChunk->fileOffset > 0) {
+        m_dataChunk->memoryBuffer.resize(m_dataChunk->payloadSize);
+        file_access.clear();
+        file_access.seekg(m_dataChunk->fileOffset);
+        file_access.read(reinterpret_cast<char*>(m_dataChunk->memoryBuffer.data()), m_dataChunk->payloadSize);
+        // Disable file offset to force using memory buffer
+        m_dataChunk->fileOffset = 0;
+    }
 
-	if (this->is_littleEndian())
-		this->header.lSize = fSize - 8;
-	else
-		this->header.bSize = fSize - 8;
+    // Ensure memory buffer is initialized if it was empty (new file or empty data)
+    if (m_dataChunk->memoryBuffer.empty() && size > 0) {
+        m_dataChunk->fileOffset = 0;
+    }
 
-	if (this->base_type == BASE_TYPE_WAVE)
-		this->format->fmt_.size = this->data_size - this->data_start;
-	else
-		this->format->SSND.size = this->data_size - this->data_start;
+    // Resize if writing past end
+    if (m_writePos + size > m_dataChunk->memoryBuffer.size()) {
+        m_dataChunk->memoryBuffer.resize(m_writePos + size);
+    }
 
-	this->writeUpdatedHeader();
+    // Perform write
+    memcpy(m_dataChunk->memoryBuffer.data() + m_writePos, buffer, size);
+    m_writePos += size;
+
+    // Update payload size
+    if (m_dataChunk->memoryBuffer.size() > m_dataChunk->payloadSize) {
+        m_dataChunk->payloadSize = static_cast<uint32_t>(m_dataChunk->memoryBuffer.size());
+    }
+}
+
+uint32_t AudioFile::calculatePadding(uint64_t currentOffset, uint32_t alignment, uint32_t nextChunkHeaderSize) const {
+    uint64_t payloadStart = currentOffset + 8 + nextChunkHeaderSize;
+    uint32_t r = payloadStart % alignment;
+    if (r == 0) return 0;
+    return alignment - r;
+}
+
+void AudioFile::flush() {
+	if (!file_access.is_open()) return;
+
+    filesystem::path tempPath = the_file_path;
+    tempPath.replace_extension(".tmp");
+
+    ofstream out(tempPath, ios_base::binary);
+    if (!out) throw FileOpenError("Could not create temporary file for flush.");
+
+    bool isLittle = (base_type == BASE_TYPE_WAVE);
+
+    if (base_type == BASE_TYPE_WAVE) {
+        out.write("RIFF\0\0\0\0WAVE", 12);
+    } else {
+        out.write("FORM\0\0\0\0AIFF", 12);
+    }
+
+    for (auto& c : m_chunks) {
+        if (c == m_dataChunk) continue;
+        auto bytes = c->serialize(isLittle);
+        out.write(reinterpret_cast<char*>(bytes.data()), bytes.size());
+        if (bytes.size() % 2 != 0) out.put(0);
+    }
+
+    uint64_t currentPos = out.tellp();
+    uint32_t align = (base_type == BASE_TYPE_WAVE) ? WAVE_ALIGNMENT : AIFF_ALIGNMENT;
+    uint32_t nextHeaderSize = (base_type == BASE_TYPE_WAVE) ? 8 : 16;
+    uint32_t padding = calculatePadding(currentPos, align, nextHeaderSize);
+
+    if (padding > 0) {
+        fourcc_t padID = (base_type == BASE_TYPE_WAVE) ? fourcc_t('JUNK') : fourcc_t('PAD ');
+        std::vector<uint8_t> padPayload(padding, 0);
+        UnknownChunk padChunk(padID, padPayload);
+        auto bytes = padChunk.serialize(isLittle);
+        out.write(reinterpret_cast<char*>(bytes.data()), bytes.size());
+    }
+
+    uint64_t newDataHeaderOffset = out.tellp(); (void)newDataHeaderOffset;
+    auto dataHeaderBytes = m_dataChunk->serialize(isLittle);
+    out.write(reinterpret_cast<char*>(dataHeaderBytes.data()), dataHeaderBytes.size());
+    uint64_t newDataOffset = out.tellp();
+
+    if (!m_dataChunk->memoryBuffer.empty()) {
+        out.write(reinterpret_cast<char*>(m_dataChunk->memoryBuffer.data()), m_dataChunk->memoryBuffer.size());
+    } else if (m_dataChunk->fileOffset > 0) {
+        file_access.clear();
+        file_access.seekg(m_dataChunk->fileOffset);
+        std::vector<char> buffer(65536);
+        uint64_t remaining = m_dataChunk->payloadSize;
+        while (remaining > 0) {
+            uint64_t toRead = std::min(remaining, (uint64_t)buffer.size());
+            file_access.read(buffer.data(), toRead);
+            out.write(buffer.data(), file_access.gcount());
+            remaining -= file_access.gcount();
+        }
+    }
+    if (m_dataChunk->payloadSize % 2 != 0) out.put(0);
+
+    uint64_t finalSize = out.tellp();
+
+    out.seekp(4);
+    uint32_t riffSize = (uint32_t)(finalSize - 8);
+    if (isLittle) native_to_little_inplace(riffSize);
+    else native_to_big_inplace(riffSize);
+    out.write(reinterpret_cast<char*>(&riffSize), 4);
+
+    out.close();
+    file_access.close();
+
+    filesystem::rename(tempPath, the_file_path);
+
+    file_access.open(the_file_path, ios_base::in | ios_base::out | ios_base::binary);
+    m_dataChunk->fileOffset = newDataOffset;
+}
+
+std::vector<ChunkInfo> AudioFile::chunkList() const {
+	std::vector<ChunkInfo> list;
+	size_t idx = 0;
+	for (const auto& chunk : m_chunks) {
+		// Calculate size (approximate for now, or we could serialize to check)
+		// For simplicity, we might need to store size or calculate it.
+		// Let's serialize payload to get size.
+		auto payload = chunk->serializePayload(base_type == BASE_TYPE_WAVE);
+		list.push_back({chunk->id, (uint32_t)payload.size(), idx++});
+	}
+	return list;
+}
+
+size_t AudioFile::getChunkCount(fourcc_t id) const {
+	size_t count = 0;
+	for (const auto& chunk : m_chunks) { if (chunk->id == id) count++; }
+	return count;
+}
+
+std::vector<unsigned char> AudioFile::getChunk(fourcc_t id, size_t index) {
+	size_t current = 0;
+	for (const auto& chunk : m_chunks) {
+		if (chunk->id == id) {
+			if (current == index) {
+                auto bytes = chunk->serialize(base_type == BASE_TYPE_WAVE);
+                if (bytes.size() <= 8) return {};
+                return std::vector<unsigned char>(bytes.begin() + 8, bytes.end());
+			}
+			current++;
+		}
+	}
+	return {};
+}
+
+void AudioFile::addChunk(fourcc_t id, const std::vector<unsigned char>& payload) {
+	if (isReserved(id)) throw ReservedChunkError("Cannot add reserved chunk type.");
+    auto chunk = std::make_shared<UnknownChunk>(id, payload);
+	m_chunks.push_back(chunk);
+}
+
+void AudioFile::addChunk(fourcc_t id, const void* data, size_t size) {
+	std::vector<unsigned char> v(size);
+	memcpy(v.data(), data, size);
+	addChunk(id, v);
+}
+
+void AudioFile::deleteChunk(fourcc_t id, size_t index) {
+	if (isReserved(id)) throw ReservedChunkError("Cannot delete reserved chunk type.");
+	size_t current = 0;
+	for (auto it = m_chunks.begin(); it != m_chunks.end(); ++it) {
+		if ((*it)->id == id) {
+			if (current == index) { m_chunks.erase(it); return; }
+			current++;
+		}
+	}
+}
+
+void AudioFile::updateAudioData(const std::vector<uint8_t>& pcmData) {
+    if (!m_dataChunk) throw FormatError("No data chunk found to update!");
+
+    // Store new data
+    m_dataChunk->memoryBuffer = pcmData;
+    m_dataChunk->payloadSize = static_cast<uint32_t>(pcmData.size());
+
+    // Invalidate file offset so flush() uses the memory buffer
+    m_dataChunk->fileOffset = 0;
+
+    // Reset cursor
+    m_readPos = 0;
+    m_writePos = 0;
+}
+
+void AudioFile::updateFormat(uint32_t sampleRate, uint16_t numChannels, uint16_t bitsPerSample, bool isFloat) {
+    if (base_type == BASE_TYPE_WAVE) {
+        auto fmt = std::dynamic_pointer_cast<WaveFmtChunk>(m_formatChunk);
+        if (!fmt) throw FormatError("Format chunk is missing or invalid type.");
+
+        fmt->sampleRate = sampleRate;
+        fmt->numChannels = numChannels;
+        fmt->bitsPerSample = bitsPerSample;
+        fmt->blockAlign = (numChannels * bitsPerSample + 7) / 8;
+        fmt->bytesPerSec = sampleRate * fmt->blockAlign;
+        fmt->formatTag = isFloat ? 0x0003 : 0x0001;
+
+    } else if (base_type == BASE_TYPE_AIFF) {
+        auto comm = std::dynamic_pointer_cast<AiffCommChunk>(m_formatChunk);
+        if (!comm) throw FormatError("Format chunk is missing or invalid type.");
+
+        comm->sampleRate = sampleRate;
+        comm->numChannels = numChannels;
+        comm->sampleSize = bitsPerSample;
+        // Note: numSampleFrames should be updated based on data size,
+        // but that requires knowing the data size.
+        // We assume updateAudioData will be called or has been called?
+        // Actually, we can calculate it from m_dataChunk if updated.
+        if (m_dataChunk->payloadSize > 0 && comm->numChannels > 0 && comm->sampleSize > 0) {
+             uint32_t bytesPerFrame = (comm->numChannels * comm->sampleSize + 7) / 8;
+             comm->numSampleFrames = m_dataChunk->payloadSize / bytesPerFrame;
+        }
+
+        comm->compressionType = isFloat ? fourcc_t('fl32') : fourcc_t(0);
+        comm->compressionName = isFloat ? "32-bit Floating Point" : "";
+    }
+
+    syncFormatFromChunks();
 }
 
 } //  namespace Diskerror
