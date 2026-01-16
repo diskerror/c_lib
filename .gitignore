@@ -6,3 +6,10 @@
 .idea
 *-orig
 .gemini
+GEMINI*
+
+# Test files
+*.tmp
+*.wav
+*.aif
+
