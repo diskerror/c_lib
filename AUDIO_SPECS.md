@@ -252,7 +252,8 @@ rules apply:
     * Supports multiple chunks of the same type (e.g., multiple `ANNO` chunks in AIFF).
     * Provides methods to retrieve and set chunks (both solo and multiple).
     * **Responsibility:** Reads, organizes, and writes chunks. Does **not** interpret chunk content (except for basic
-      header validation).
+      header validation and size endianness). Chunks will have their entire structure managed by the user, including 
+      endianness, and including the chunk ID and size.
     * **Endianness:** Selects the correct endianness for file I/O based on the file type (Little Endian for WAVE, Big
       Endian for AIFF).
 * **Chunk Enumeration:**
@@ -263,7 +264,6 @@ rules apply:
         3. **Index:** The zero-based sequential index of the chunk in the file's chunk list. This index can be used to
            retrieve the specific chunk instance.
 * **File Creation:**
-    * Creating a new file starts with creating an `AudioFormat` object.
     * `AudioFormat` provides a properly crafted format chunk to `AudioFile`.
     * `AudioFile` handles the initial 12-byte container header and the audio data chunk structure.
 * **Flush:**
@@ -288,7 +288,6 @@ rules apply:
 * **Format Immutability:**
     * **Existing Files:** The format chunk (`fmt ` or `COMM`) **cannot** be changed.
     * **New Files:** The format **cannot** be changed once the format chunk or any audio data has been written to disk.
-* **Chunk Modification:** Only non-format chunks (metadata, etc.) can be added, removed, or changed in existing files.
 * **Unsupported Formats:**
     * **RF64:** Read-only support. Creation or update of RF64 files is **not** supported.
     * **RIFX:** Big-endian WAVE (RIFX) is **not** supported.
