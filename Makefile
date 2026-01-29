@@ -11,7 +11,8 @@ BUILD_PREF = build/
 LIB_PREF = lib/libdiskerror_
 
 AUDIO_LIB = $(addprefix $(LIB_PREF), audio.a)
-AUDIO = AudioFile AudioSamples
+AUDIO = AudioFile
+#AUDIO = AudioFile AudioSamples
 AUDIO_OBJS = $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 
 #CLAPP_LIB = $(addprefix $(LIB_PREF), clapp.a)

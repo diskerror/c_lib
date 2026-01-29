@@ -5,182 +5,129 @@
 #ifndef DISKERROR_AUDIOFILE_H
 #define DISKERROR_AUDIOFILE_H
 
-
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <vector>
 #include <span>
-#include <memory>
+#include <vector>
 
-#include <boost/cstdfloat.hpp>
 #include <boost/endian/arithmetic.hpp>
-
-#include "AIFF.h"
-#include "WAVE.h"
 
 namespace Diskerror {
 
-using namespace std;
-using namespace boost;
 using namespace boost::endian;
 
-//	Currently only WAVE and AIFF (AIFC) is supported.
-//	RIFF or RF64 is determined by total file size.
-typedef enum {
-	BASE_TYPE_UNKNOWN = 0,
-	BASE_TYPE_WAVE, //	RIFF or RF64: WAVE, little-endian (and BWF)
-	BASE_TYPE_AIFF, //	FORM: AIFF or AIFC, big-endian
-	BASE_TYPE_WAVX, //	RIFX: WAVE, big-endian
-	BASE_TYPE_8SVX, //	FORM: 8SVX, Amiga IFF 8-bit, big-endian
-	BASE_TYPE_MAUD  //	FORM: MAUD, Amiga IFF multi-channel, big-endian
-} baseAudioFileType_t;
+typedef big_uint32_t fourcc_t;
 
-typedef struct {
-	fourcc_t id;
-	//	RIFF or RF64: WAVE, little-endian (and BWF)
-	//	FORM: AIFF or AIFC, big-endian (except 'swot')
-	union {
-		little_uint32_t lSize;
-		big_uint32_t    bSize;
-	};
+enum class AudioType : uint8_t {
+	Unknown = 0,
+	Wave,
+	Aiff
+};
 
-	fourcc_t type;
-} audioFileHeader_t;
+/**
+ *	AudioFile
+ *
+ *	Maps std::fstream to the needs of a WAVE or AIFF audio file.
+ *	Only understands two chunk types: the 12-byte container header
+ *	(RIFF/FORM/RF64) and the audio data chunk ('data'/'SSND').
+ *	All other chunks are opaque byte blobs — the user's full responsibility.
+ *
+ *	Read and write positions are relative to the first byte of audio data.
+ *	AudioFile tracks these positions internally so that flush() can rewrite
+ *	chunk headers without disrupting the user's audio I/O position.
+ */
+class AudioFile {
+	std::filesystem::path m_path;
+	AudioType             m_type = AudioType::Unknown;
+	std::fstream          m_file;
 
-typedef union {
+	//	12-byte container header: [ID 4][SIZE 4][TYPE 4]
 	struct {
-		fourcc_t id;
-
+		fourcc_t id{0};
 		union {
 			little_uint32_t lSize;
 			big_uint32_t    bSize;
 		};
+		fourcc_t type{0};
+	} m_header{};
 
-		char rawData[];
-	};
+	//	Non-audio chunks stored as opaque byte blobs.
+	//	Each vector is a complete chunk: [ID 4][SIZE 4][payload...]
+	//	The data/SSND chunk is NOT in this list.
+	std::vector<std::vector<uint8_t>> m_chunks;
 
-	fmt_t  fmt_; //	WAVE format
-	COMM_t COMM; //	AIFF format
+	//	Audio data region tracking
+	int64_t m_dataStart = 0;    //	file offset of first audio byte
+	int64_t m_dataSize  = 0;    //	current audio payload size in bytes
+	int64_t m_readPos   = 0;    //	read position relative to m_dataStart
+	int64_t m_writePos  = 0;    //	write position relative to m_dataStart
+	bool    m_dirty     = false;
 
-//	additional AIFF chunks
-	//	minf.size==16?
-	SSND_t     SSND;
-	aChunk_t   elm1; //	elm1.size==426, filler like JUNK?
-	MARK_t     MARK;
-	INST_t     INST;
-	aiffData_t MIDI;
-	aiffData_t AESD;
-	APPL_t     APPL;
-	COMT_t     COMT;
-	text_t     NAME;
-	text_t     AUTH;
-	text_t     copy;
-	text_t     ANNO;
-	SAXL_t     SAXL;
-
-//	additional WAVE chunks
-	waveData_t data;
-	ds64_t     ds64;
-	waveData_t JUNK;
-	bext_t     bext;
-	big1_t     big1;
-	fact_t     fact;
-	cue_t      cue_;
-	plst_t     plst;
-	listHead_t list;
-	smpl_t     smpl;
-	inst_t     inst;
-} chunks_t;
-
-// Custom deleter for chunks_t which are allocated as char arrays
-struct ChunkDeleter {
-	void operator()(chunks_t* p) const {
-		delete[] reinterpret_cast<char*>(p);
-	}
-};
-
-//	Defined in AudioFile.cp
-class chunkVector : public vector<unique_ptr<chunks_t, ChunkDeleter>> {
-public:
-	uint32_t getHeaderSize(bool is_littleEndian);
-};
-
-/**
- *	class AudioFile
- */
-class AudioFile {
-	const filesystem::path the_file_path;
-
-	baseAudioFileType_t base_type = BASE_TYPE_UNKNOWN;
-	fstream             file_access;
-	audioFileHeader_t   header = {0, {0}, 0};
-	chunkVector         chunk;
-	chunks_t*           format; // Non-owning pointer (observer)
-
-	int64_t  file_size{-1}; // size of FORM or RF64 block (file size - 8)
-	uint32_t data_start{0}; // first byte of sound data in file
-	int64_t  data_size{-1}; // size of data chunk
-	int16_t  bytes_per_frame{-1};
-	int64_t  frame_count{-1}; // sample count of fact chunk (frames)
-
-	int64_t data_write_pos = 0;
-
-	size_t getAllChunksSize();
+	//	Internal helpers
+	int64_t allChunksSize() const;
+	void    writeHeaders();
 
 public:
-	// Constructors
-	//	Use for opening an existing file.
-	//	Throws error if file does not exist.
-	explicit AudioFile(const filesystem::path&);
+	//	Open existing file. Throws if file does not exist.
+	explicit AudioFile(const std::filesystem::path& path);
 
-	//	Use for creating a new file.
-	//	Throws error if file already exists.
-	explicit AudioFile(
-			const filesystem::path& fPath,
-			uint32_t            sampleRate,
-			uint16_t            sampleSize,
-			uint16_t            numChan,
-			big_uint32_t        encoding,
-			baseAudioFileType_t baseType
-		);
+	//	Create new file. Throws if file already exists.
+	//	User must add chunks (format, etc.) then call flush() before writing audio.
+	AudioFile(const std::filesystem::path& path, AudioType type);
 
-	//	Copy
-	AudioFile(const AudioFile& f) : the_file_path(f.the_file_path) {
-		throw runtime_error("Copy constructor not allowed.");
-	};
+	//	Move semantics
+	AudioFile(AudioFile&& other) noexcept;
+	AudioFile& operator=(AudioFile&& other) noexcept;
 
-	// Destructor
+	//	No copy
+	AudioFile(const AudioFile&) = delete;
+	AudioFile& operator=(const AudioFile&) = delete;
+
+	//	Destructor — flushes if dirty
 	~AudioFile();
 
-	string              getFileName() const;
-	baseAudioFileType_t getBaseType() const;
+	// --- Chunk management ---
 
-	[[nodiscard]] bool is_pcm() const;
-	[[nodiscard]] bool is_ieee() const;
-	[[nodiscard]] bool is_littleEndian() const;
+	//	Add a fully-formed chunk. AudioFile copies the bytes.
+	//	Returns the index of the inserted chunk.
+	size_t addChunk(const void* data, size_t totalSize);
 
-	[[nodiscard]] uint32_t getFormatSize() const;
-	[[nodiscard]] uint16_t getNumChannels() const;
-	uint32_t               getSampleRate();
-	[[nodiscard]] uint16_t getBitsPerSample() const;
-	[[nodiscard]] int64_t  getNumFrames() const;
-	[[nodiscard]] int64_t  getNumSamples() const;
-	[[nodiscard]] int64_t  getDataSize() const;
-	[[nodiscard]] fourcc_t getDataEncoding() const;
+	//	Number of non-audio chunks.
+	[[nodiscard]] size_t chunkCount() const;
 
-	vector<unsigned char> ReadAllData();
-	void                  WriteAllData(span<const unsigned char>);
+	//	View of stored chunk bytes at the given index.
+	[[nodiscard]] std::span<const uint8_t> chunk(size_t index) const;
 
-	uint16_t        addChunk(chunks_t*);
-	uint16_t        getChunkCount() const;
-	const chunks_t* getChunk(uint16_t);
+	//	Replace the chunk at index with new data.
+	void replaceChunk(size_t index, const void* data, size_t totalSize);
 
-	void writeUpdatedHeader();
-	void writeNewHeader();
+	//	Remove the chunk at index.
+	void deleteChunk(size_t index);
 
-	void     seekp_data(uint64_t, ios_base::seekdir);
-	uint64_t tellp_data();
-	void     write(const char*, uint64_t);
+	// --- Audio data I/O (positions relative to start of audio data) ---
+
+	std::streamsize read(char* buf, std::streamsize count);
+	std::streamsize write(const char* buf, std::streamsize count);
+
+	void seekg(std::streamoff off, std::ios_base::seekdir dir = std::ios_base::beg);
+	void seekp(std::streamoff off, std::ios_base::seekdir dir = std::ios_base::beg);
+
+	[[nodiscard]] std::streampos tellg() const;
+	[[nodiscard]] std::streampos tellp() const;
+
+	// --- File operations ---
+
+	//	Sync headers to disk. On a new file, this creates the file and
+	//	establishes the header structure. Must be called before write().
+	void flush();
+
+	// --- Queries ---
+
+	[[nodiscard]] bool isLittleEndian() const;
+	[[nodiscard]] AudioType type() const;
+	[[nodiscard]] int64_t dataSize() const;
+	[[nodiscard]] const std::filesystem::path& path() const;
 };
 
 } // namespace Diskerror
