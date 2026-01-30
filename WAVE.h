@@ -10,10 +10,7 @@
 using namespace boost::endian;
 
 //	Four-character code.
-#ifndef HAS_FOURCC_T
-#define HAS_FOURCC_T
 typedef big_uint32_t fourcc_t;
-#endif
 
 #define SPEAKER_FRONT_LEFT 0x00000001
 #define SPEAKER_FRONT_RIGHT 0x00000002

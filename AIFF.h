@@ -13,10 +13,7 @@
 using namespace boost::endian;
 
 //	Four-character code.
-#ifndef HAS_FOURCC_T
-#define HAS_FOURCC_T
 typedef big_uint32_t fourcc_t;
-#endif
 
 typedef struct AiffFileHeader {
 	fourcc_t     id   = 'FORM';
