@@ -3,8 +3,8 @@
 // Creates WAVE, AIFF, and AIFC files, then re-opens and verifies.
 //
 
-#include "AudioFile.h"
-#include "AudioFormat.h"
+#include "../AudioFile.h"
+#include "../AudioFormat.h"
 
 #include <cmath>
 #include <cstring>
@@ -246,8 +246,7 @@ static void testAifcFloat32(const filesystem::path& dir) {
 ////////////////////////////////////////////////////////////////////////////////
 
 int main() {
-	const filesystem::path outDir = "test_output";
-	filesystem::create_directories(outDir);
+	const filesystem::path outDir = "tests";
 
 	testWavePCM16(outDir);
 	testAiffPCM16(outDir);

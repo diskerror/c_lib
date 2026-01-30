@@ -12,4 +12,7 @@ GEMINI*
 *.tmp
 *.wav
 *.aif
+*.aiff
+*.dSYM/
+tests/test_audioformat
 

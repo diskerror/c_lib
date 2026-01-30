@@ -19,7 +19,9 @@ AUDIO_OBJS = $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 #CLAPP = clapp clappFiles FileList
 #CLAPP_OBJS = $(addprefix $(BUILD_PREF), $(addsuffix .o, $(CLAPP)))
 
-.PHONY: clean all
+LINK = g++ -std=c++23 -Wall -Wextra -Wno-macro-redefined
+
+.PHONY: clean all test
 
 #all: $(AUDIO_LIB) $(CLAPP_LIB)
 all: $(AUDIO_LIB)
@@ -38,6 +40,12 @@ $(addprefix $(BUILD_PREF), AudioFormat.o): AudioFormat.cp AudioFormat.h BigFloat
 
 $(addprefix $(BUILD_PREF), AudioSamples.o): AudioSamples.cp AudioSamples.h Makefile
 	$(CXX) $(CXXFLAGS) -O3 $< -o $@
+
+tests/test_audioformat: tests/test_audioformat.cp $(AUDIO_LIB) AudioFile.h AudioFormat.h Makefile
+	$(LINK) $(CXXFLAGS) -O0 -g $< -Llib -ldiskerror_audio -o $@
+
+test: tests/test_audioformat
+	./tests/test_audioformat
 
 #$(addprefix $(BUILD_PREF), clapp.o): clapp.cp clapp.h Makefile
 #	$(CXX)-O3 $< -o $@
