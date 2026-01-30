@@ -12,11 +12,12 @@ The differences between the original AIFF and AIFF-C were kept to a minimum.  Ap
 
 The following changes have been made from AIFF:
 
-- ¥  The FORM identifier was changed from 'AIFF' to 'AIFC'.  This distinguishes AIFF-C files from AIFF files. Existing AIFF programs, until they are upgraded, will simply ignore AIFF-C files.  See the explanation below for this change.
-- ¥  The Common Chunk has been extended to include a compression type ID and a compression type name. AIFF-C is thus capable of storing compressed audio data generated from any compression algorithms.
-- ¥  The Sound Data Chunk can contain compressed audio data.  The Chunk format has not been modified.
-- ¥  The Sound Accelerator (Saxel) Chunk is new.  It is designed to eliminate initial artifacts caused by the de-compression algorithms when playback begins at a random point defined by a Marker.
-- ¥  The Format Version Chunk is new.  This Chunk is designed to provide a smooth transition for potential future upgrades to the AIFF-C specification.
+- The FORM identifier was changed from 'AIFF' to 'AIFC'.  This distinguishes AIFF-C files from AIFF files. Existing 
+  AIFF programs, until they are upgraded, will simply ignore AIFF-C files.  See the explanation below for this change.
+- The Common Chunk has been extended to include a compression type ID and a compression type name. AIFF-C is thus capable of storing compressed audio data generated from any compression algorithms.
+- The Sound Data Chunk can contain compressed audio data.  The Chunk format has not been modified.
+- The Sound Accelerator (Saxel) Chunk is new.  It is designed to eliminate initial artifacts caused by the de-compression algorithms when playback begins at a random point defined by a Marker.
+- The Format Version Chunk is new.  This Chunk is designed to provide a smooth transition for potential future upgrades to the AIFF-C specification.
 
 ![Image](AIFF-C.9.26.91_artifacts/image_000000_a6d2a2c450ef43b4255fb915c956b8e4f6ea710c73c9ccfc4f5e363384321fb0.png)
 
@@ -44,29 +45,29 @@ Here are the guidelines which developers should follow to aid the transition fro
 
 From experience gathered over the period of time since the original AIFF has been released, we offer the following advice to those developers who are beginning to implement either AIFF or AIFF-C.  For the purposes of this section only, we will refer to both AIFF and AIFF-C as simply AIFF.
 
-## Chunk Ordering
+### Chunk Ordering
 
 Remember that there is no order imposed on the Chunks!  They may appear in any order in an AIFF file. It may seem logical to place the Common Chunk at the beginning, followed by the other Chunks and terminated with the large Sound Data Chunk, but this is not a requirement.  Your application which reads an AIFF file should be designed to get a Chunk, identify it, then process it with no supposition as to which Chunk it is until it has been identified.
 
-## Modifying Chunks
+### Modifying Chunks
 
 If your application allows modification of a Chunk, you must also take on the responsibility of updating other Chunks which are based on the modified Chunk.  An example is cutting some sound data from the Sound Data Chunk - if there are Markers which pointed to data which was removed, those Markers should also be deleted (some user interaction may be appropriate in certain cases).  Also, other Markers may need to be re-calculated to preserve their position to the correct (shifted) sample frames.
 
 BEWARE:  If your application allowed an AIFF file to be edited (modified) and if there are Chunks in the file which you do not recognize, you must discard those unknown Chunks when you save the file!!! (This is a modification of the guideline stated in the previous AIFF specification.)  Another application which uses those unrecognized Chunks could be seriously affected if those Chunks depend on the Chunks which  you  modified.    Of  course,  if  your  application  is  simply  copying  the  AIFF  file  without modifications, then it should also copy the unrecognized Chunks.   We recommend that your application understand each and every Chunk which is listed in this specification to handle this situation in the best possible way.
 
-## Registering New Compression Types
+### Registering New Compression Types
 
 You must register your compression type with Apple to establish an official compressionType and compressionName .  You should also describe the format and usage of the Sound Accelerator Chunk for your compression type.  By registering this information, other developers will know about and be able to include your compressed sound format in their applications.  This will allow end users the ability to transfer compressed audio data between applications - which is the goal of this specification.  Please see appendix B on how to contact Apple to register your compression type.
 
-## Number of Sample Frames
+### Number of Sample Frames
 
 The clearest indication of the number of sample frames contained within the file is obtained from the numSampleFrames parameter in the Common Chunk and not the ckDataSize parameter in the Sound Data Chunk.  The ckDataSize parameter in the Sound Data Chunk is padded to include the fields which follow it in addition to the actual sound data but does not include the zero pad byte at the end if the total number of sound data bytes is odd.  Simple!
 
-## Remember the Pad Byte!
+### Remember the Pad Byte!
 
 Each Chunk must contain an even number of bytes.  For those Chunks whose total contents would yield an odd number of bytes, a zero pad byte must be added at the end of the Chunk.  This pad byte is not included in ckDataSize , which indicates the size of the data in the Chunk.  It helps to keep this in mind as you seek through an AIFF file to get to the next Chunk.
 
-## Format Version Chunk
+### Format Version Chunk
 
 The section entitled "When reading an AIFF-C file" in the Format Version Chunk is of special importance.
 
@@ -98,7 +99,7 @@ A CD-ROM has been released to developers entitled the "Macintosh System Softwre 
 
 ## Table  of  Contents
 
-## Audio Interchange File Format AIFF-C
+# Audio Interchange File Format AIFF-C
 
 A Standard File Format for Audio Data Apple Computer, Inc.
 
@@ -112,7 +113,7 @@ AIFF-C is based on Audio IFF (AIFF) which conforms to the " EA IFF 85" Standard 
 
 AIFF-C is designed for interchange, although application designers should find it flexible enough to use as an everyday data storage format as well.  If an application uses a different storage format, it can convert to and  from  the  AIFF-C  format  defined  here.    This  will  facilitate  the  sharing  of  sound  data  between applications and across various computer platforms.
 
-Data types
+### Data types
 
 A C-like language will be used to describe data structures in this document.  The data types used are listed below:
 
@@ -125,19 +126,19 @@ A C-like language will be used to describe data structures in this document.  Th
 | ID :                       | 32 bits, the concatenation of four printable ASCII character in the range ' ' (SP, 0x20) through '~' (0x7E). Spaces (0x20) cannot precede printing characters; trailing spaces are allowed. Control characters are forbidden. Upper/lower case is significant, that is, IDs are compared using a simple 32-bit equality check.               |
 | OSType :                   | 32 bits. A concatenation of four characters, as defined in Inside Macintosh, vol II. Upper/lower case is significant, that is, OSTypes are compared using a simple 32-bit equality check.                                                                                                                                                    |
 
-Constants
+### Constants
 
 1
 
 Decimal values are referred to as a string of digits, for example 123, 0, 100 are all decimal numbers. Hexadecimal values are preceded by a 0x, e.g. 0x0A12, 0x1, 0x64.
 
-Data Organization
+### Data Organization
 
 All data is stored in Motorola 68000 format.  Numbers are stored high-byte first, as follows:
 
 ![Image](AIFF-C.9.26.91_artifacts/image_000001_b84bdbde925e57e897bba28ea60eadc6f622baf67c98b3064c690109b72efa47.png)
 
-Referring to Audio Interchange File Format AIFF-C
+### Referring to Audio Interchange File Format AIFF-C
 
 The official name for this standard is Audio Interchange File Format AIFF-C. If an application needs to present the name of this format to a user, such as in a "Save as…" dialog box, the name can be abbreviated to AIFF-C or Audio IFF-C .
 
@@ -154,7 +155,11 @@ A chunk can be represented using our C-like language in the following manner:
 2
 
 ```
-typedef struct { ID ckID; /* chunk ID */ long ckDataSize; /* chunk data size, in bytes */ char ckData[]; /* data */ } Chunk;
+typedef struct {
+    ID   ckID;       /* chunk ID */
+    long ckDataSize; /* chunk data size, in bytes */
+    char ckData[];   /* data */
+} Chunk;
 ```
 
 ckID describes the format of the chunk's data portion.  A program can determine how to interpret the chunk data by examining ckID .
@@ -170,10 +175,13 @@ An AIFF-C file is a collection of a number of different types of chunks.  There 
 The chunks in a AIFF-C file are grouped together in a container chunk.  "EA IFF 85" defines a number of container chunks, but the one used by AIFF-C is called a FORM.  A FORM has the following format:
 
 ```
-typedef struct { ID ckID; /*  'FORM'  */ long ckDataSize; ID formType; /*  'AIFC'  */ Chunk chunks[];
+typedef struct {
+    ID    ckID;       /*  'FORM'  */
+    long  ckDataSize;
+    ID    formType;   /*  'AIFC'  */
+    Chunk chunks[];
+} FormAIFCChunk;
 ```
-
-- } FormAIFCChunk;
 
 ckID is always 'FORM'.  This indicates that this is a FORM chunk.
 
@@ -199,13 +207,13 @@ Macintosh or Apple II applications should not store any information in the resou
 
 On an operating system that uses file extensions, such as MS-DOS or UNIX, it is recommended that AIFFC file names have a ".AFC" extension.
 
-## Local Chunk Types
+### Local Chunk Types
 
 The formats and ckID s of the local chunk types found within a FORM AIFC are described in the following sections.
 
 The Common Chunk is required in a FORM AIFC.  If the sampled sound has greater than zero length, then the Sound Data chunk is required. All other chunks are optional.  All applications that use FORM AIFC must be able to read the required chunks and can choose to selectively ignore the optional chunks.
 
-## Dealing with Unrecognized Local Chunks
+### Dealing with Unrecognized Local Chunks
 
 When reading an IFF file, your program may encounter local chunk types that it doesn't recognize, perhaps extensions defined after your program was written.  In a FORM AIFC, this situation also applies to Application-Specific Chunks with unrecognized application signatures.  (The application signature acts as a chunk subtype.)  Clearly your program cannot process the contents of unrecognized chunks.
 
@@ -223,7 +231,7 @@ To insure that this standard remains usable by everyone, Apple Computer, Inc. wi
 
 The Format Version Chunk contains a date field to indicate the format rules for an AIFF-C specification. This will enable smoother future upgrades to this specification.
 
-Format Version Chunk
+### Format Version Chunk
 
 The format for the data within a Format Version Chunk is shown below.
 
@@ -241,7 +249,7 @@ Do not confuse the format version with the creation date of the file.  The forma
 
 The Format Version Chunk is required .    One and only one Format Version Chunk must appear in a FORM AIFC.
 
-Why the Format Version Chunk was added
+### Why the Format Version Chunk was added
 
 "Gee, if we had had a Version Chunk in AIFF, we wouldn't have had to change the FORM type for AIFFC."  Anonymous  (circa 1990)
 
@@ -253,7 +261,7 @@ Format Version Chunk to determine if the file is corrupted or if there is a mism
 
 See how the following steps simplify your life (and ours) to determine if a FORM AIFC is usable:
 
-## When reading an AIFF-C file
+### When reading an AIFF-C file
 
 1.  First find the FORM AIFC field.  If you don't find it, issue an alert like "This file doesn't contain an AIFC standard audio recording.", then exit from these directions.
 2.  Try to find all the chunks which are critical to your application (probably COMM and SSND, but we can imagine an app that only needs the COMM chunk, e.g. to determine the playback duration).
@@ -266,26 +274,26 @@ If you can find it and it does not contain a date which you recognize, issue an 
 
 Otherwise, issue an alert like "This file seems to be malformed."  Maybe say which Chunks are missing.
 
-## Remember
+### Remember
 
-- ¥  In order to survive interchange and format evolution, reader programs must be robust about chunk order, missing chunks, and unexpected chunks.
-- ¥  Contrary to the original AIFF spec, when a program encounters an unrecognized chunk, it should just skip it.  Do not copy it to a new, edited file.  This is the general rule in IFF because there's no way to maintain the integrity of unrecognized chunks when the surrounding data is edited.
+- In order to survive interchange and format evolution, reader programs must be robust about chunk order, missing chunks, and unexpected chunks.
+- Contrary to the original AIFF spec, when a program encounters an unrecognized chunk, it should just skip it.  Do not copy it to a new, edited file.  This is the general rule in IFF because there's no way to maintain the integrity of unrecognized chunks when the surrounding data is edited.
 
-## How the Format Version Chunk will help potential future upgrades
+### How the Format Version Chunk will help potential future upgrades
 
 If and when we design evolutionary changes to the file format, we will try to make the new representation backward compatible (e.g. just add new chunk types).  If we must change the format of existing data, then we will change the relevant Chunk IDs to a new name.  For example, let's say that the INST Chunk needs to be upgraded to have more than 2 loop points.  In this case, we would replace the INST Chunk with a new Chunk, call it "LOOP".  In the transition time between widespread adoption of the new LOOP Chunk, a FORM could contain both the old INST Chunk and the new LOOP Chunk.  Applications which know about the new LOOP Chunk would be able to process it correctly, while preserving the INST Chunk for other applications.  Applications which do not use the INST or LOOP Chunks are unaffected.  Applications which need the old INST Chunk can still use it, but should upgrade to the new LOOP Chunk since there is no longer any guarantee that other (editing) applications will preserve the old INST Chunk.
 
 Here's how we would have upgraded AIFF to handle compressed audio, if we had had a Format Version Chunk already in AIFF:
 
-- ¥  Compression is optional. What follows is only for the compressed case.
-- ¥  Don't change the format of the COMM Chunk.  Existing programs can still read it.
+- Compression is optional. What follows is only for the compressed case.
+- Don't change the format of the COMM Chunk.  Existing programs can still read it.
 
 7
 
-- ¥  Add a "Compression Descriptor" Chunk containing the 4-letter compression type code and the compression name string. (The code is for programs. The string is for alerts when the code is unrecognized.)
-- ¥  Replace the SSND Chunk with a Compressed Sound-Data Chunk "CSND".  (Existing programs will ignore it.)
-- ¥  Change the Format Version date (for the sake of alerts).
-- ¥  Add the optional Saxel Chunk.
+- Add a "Compression Descriptor" Chunk containing the 4-letter compression type code and the compression name string. (The code is for programs. The string is for alerts when the code is unrecognized.)
+- Replace the SSND Chunk with a Compressed Sound-Data Chunk "CSND".  (Existing programs will ignore it.)
+- Change the Format Version date (for the sake of alerts).
+- Add the optional Saxel Chunk.
 
 We chose to change the FORM type from AIFF to AIFC because, lacking the Format Version Chunk, existing applications would not be able to issue a helpful error message.  Some existing applications may even crash if they did not find the SSND Chunk.
 
@@ -296,7 +304,17 @@ We chose to change the FORM type from AIFF to AIFC because, lacking the Format V
 The Common Chunk describes fundamental parameters of the sampled sound.
 
 ```
-#define CommonID 'COMM' /* ckID for Common Chunk */ typedef struct { ID ckID; /*  'COMM'  */ long ckDataSize; short numChannels; /* # audio channels */ unsigned long numSampleFrames; /* # sample frames = samples/channel */ short sampleSize; /* # bits/sample */ extended sampleRate; /* sample_frames/sec */ ID compressionType; /* compression type ID code */ pstring compressionName; /* human-readable compression type name */ } CommonChunk;
+#define CommonID 'COMM' /* ckID for Common Chunk */
+typedef struct {
+    ID            ckID;            /*  'COMM'  */
+    long          ckDataSize;
+    short         numChannels;     /* # audio channels */
+    unsigned long numSampleFrames; /* # sample frames = samples/channel */
+    short         sampleSize;      /* # bits/sample */
+    extended      sampleRate;      /* sample_frames/sec */
+    ID            compressionType; /* compression type ID code */
+    pstring       compressionName; /* human-readable compression type name */
+} CommonChunk;
 ```
 
 ckID is always 'COMM'. ckDataSize is the size in bytes of the data portion of the chunk.  It does not include the 8 bytes used by ckID and ckDataSize .  For the Common Chunk, ckDataSize is 22 + the size of the pstring. (The pstring includes a pad byte when needed to fill out to an even number of bytes.)
@@ -357,7 +375,14 @@ One and only one Common Chunk must appear in every FORM AIFC.
 The Sound Data Chunk contains the actual sample frames.
 
 ```
-#define SoundDataID 'SSND' /* ckID for Sound Data Chunk */ typedef struct { ID ckID; /*  'SSND'  */ long ckDataSize; unsigned long offset; unsigned long blockSize; char soundData[]; } SoundDataChunk; ckID is always 'SSND'.
+#define SoundDataID 'SSND' /* ckID for Sound Data Chunk */
+typedef struct {
+    ID            ckID;    /*  'SSND'  */
+    long          ckDataSize;
+    unsigned long offset;
+    unsigned long blockSize;
+    char          soundData[];
+} SoundDataChunk;
 ```
 
 ckDataSize is the size of the data portion of the chunk, in bytes.  It does not include the 8 bytes used by ckID and ckDataSize. It does include the 8 bytes taken by offset and blockSize .  If soundData[] contains an odd number of bytes, a pad byte with a value of zero is added at the end to preserve an even length for this Chunk.  This pad byte, if present is not included in ckDataSize .  To avoid confusion, the actual number of sample frames should always be obtained from the numSampleFrames parameter in the Common Chunk.
@@ -368,7 +393,7 @@ blockSize is used in conjunction with offset for block-aligning sound data.  It 
 
 soundData contains the sample frames that make up the sound.  The number of sample frames in the soundData is determined by the numSampleFrames parameter in the Common Chunk .  If soundData[] contains an odd number of bytes, a zero pad byte is added at the end (but not used for playback).
 
-Linear Sound Data (not compressed)
+### Linear Sound Data (not compressed)
 
 Each sample point in a sample frame is a linear, 2's complement value.  Sample points are from 1 to 32 bits wide, as determined by the sampleSize parameter in the Common Chunk .
 
@@ -380,11 +405,11 @@ As an example, the 12-bit sample, binary 101000010111, is stored left justified 
 
 ![Image](AIFF-C.9.26.91_artifacts/image_000006_c89cf284ecd96499ca064000b488e5db763262745b12a54240b200b4750829eb.png)
 
-## Sample Frames
+### Sample Frames
 
 The sample points within a sample frame are packed together as described in the section on the Common Chunk , above.  Sample frames are stored contiguously in order of increasing time.  There are no pad bytes between samples or between sample frames.
 
-## Compressed Sound Data
+### Compressed Sound Data
 
 The soundData is compressed according to the compressionType parameter in the Common Chunk.
 
@@ -394,7 +419,7 @@ Appendix C describes the encoding format for the existing Apple Computer audio c
 
 There may be some applications that, to enable real time recording and playback of audio, wish to align the sampled sound data on a fixed-size disk block.  This can be accomplished with the offset and blockSize parameters, as shown below.
 
-Block-aligned sound data
+### Block-aligned sound data
 
 ![Image](AIFF-C.9.26.91_artifacts/image_000007_1009cb2eacae3411b8a2a28174843c1a1b393c9fb78c95f5ab3c42a62cf500ee.png)
 
@@ -414,12 +439,17 @@ The Sound Data Chunk is required unless the numSampleFrames field in the Common 
 
 The Marker Chunk contains markers that point to positions in the sound data.  Markers can be used for whatever purposes an application desires.  The Instrument Chunk , defined later in this document, uses markers to mark loop beginning and end points, for example.
 
-Markers
+### Markers
 
 A marker has the following format.
 
 ```
-typedef short MarkerId; typedef struct { MarkerId id; /*  must be > 0  */ unsigned long position; /*  sample frame number  */ pstring markerName; } Marker;
+typedef short MarkerId;
+typedef struct {
+    MarkerId      id;       /*  must be > 0  */
+    unsigned long position; /*  sample frame number  */
+    pstring       markerName;
+} Marker;
 ```
 
 id is a number that uniquely identifies the marker within a FORM AIFC.  The id can be any positive nonzero integer, as long as no other marker within the same FORM AIFC has the same id.
@@ -438,12 +468,18 @@ Note:  Some "EA IFF 85" files store C-style strings (text bytes followed by a nu
 
 14
 
-Marker Chunk Format
+### Marker Chunk Format
 
 The format for the data within a Marker Chunk is shown below.
 
 ```
-#define MarkerID 'MARK' /* ckID for Marker Chunk */ typedef struct { ID ckID; /*  'MARK'  */ long ckDataSize; unsigned short numMarkers; Marker markers[]; } MarkerChunk;
+#define MarkerID 'MARK'       /* ckID for Marker Chunk */
+typedef struct {
+    ID             ckID;      /*  'MARK'  */
+    long           ckDataSize;
+    unsigned short numMarkers;
+    Marker         markers[];
+} MarkerChunk;
 ```
 
 ckID is always 'MARK'. ckDataSize is the size of the data portion of the chunk, in bytes.  It does not include the 8 bytes used by ckID and ckDataSize.
@@ -454,7 +490,7 @@ numMarkers , if non-zero, is followed by the markers themselves.  Because all fi
 
 The Marker Chunk is optional.  No more than one Marker Chunk can appear in a FORM AIFC.
 
-## Important!
+**Important!**
 
 If a segment of sound data containing one or more Markers is relocated in the sound stream, the Markers within the segment being moved must be re-calculated.  If a segment of sound data is being deleted, all Markers within that segment should be deleted and all Markers after that segment must be adjusted.  If sound data is inserted at a point in the sound data stream, all Markers after that point must be adjusted. Any Saxels (see appendix D) which are associated with the updated or deleted Markers must also be updated if affected by the new Marker values.  Updating Markers in some cases may have implications in the user interface and the application designer should consider when the user should be notified or asked about the consequences of an edit.
 
@@ -464,12 +500,17 @@ If a segment of sound data containing one or more Markers is relocated in the so
 
 The Comments Chunk is used to store comments about markers in the FORM AIFC.  "EA IFF 85" has an Annotation Chunk that can be used for comments, but the Comments Chunk adds to each comment (1) a timestamp and (2) a reference to a marker.
 
-Comment
+### Comment
 
 A comment consists of a time stamp, marker id, and a text count followed by text.
 
 ```
-typedef struct { unsigned long timeStamp; /* comment creation date */ MarkerId marker; /* comments for this marker number */ unsigned short count; /* comment text string length */ char text[]; /* comment text */ } Comment;
+typedef struct {
+    unsigned long  timeStamp; /* comment creation date */
+    MarkerId       marker;    /* comments for this marker number */
+    unsigned short count;     /* comment text string length */
+    char           text[];    /* comment text */
+} Comment;
 ```
 
 timeStamp indicates when the comment was created.  Units are the number of seconds since January 1, 1904.  (This time convention is the one used by the Macintosh.  For procedures that manipulate the time stamp, see The Operating System Utilities chapter in Inside Macintosh, vol II ).  For a routine that will convert this to an Apple II GS/OS format time, please see Apple II File Type Note for filetype 0xD8, aux type 0x0000.
@@ -480,10 +521,16 @@ count is the length of the text that makes up the comment.  This is a 16 bit qua
 
 text is the comment itself.  This text must be padded with a byte at the end as needed to make it an even number of bytes long.  This pad byte, if present, is not included in count .
 
-## Comments Chunk Format
+### Comments Chunk Format
 
 ```
-#define CommentID 'COMT' /* ckID for Comments Chunk  */ typedef struct { ID ckID; /*  'COMT'  */ long ckDataSize; unsigned short numComments; MarkerComment comments[]; } CommentsChunk;
+#define CommentID 'COMT'      /* ckID for Comments Chunk  */
+typedef struct {
+    ID             ckID;      /*  'COMT'  */
+    long           ckDataSize;
+    unsigned short numComments;
+    MarkerComment  comments[];
+} CommentsChunk;
 ```
 
 ckID is always 'COMT'. ckDataSize is the size of the data portion of the chunk, in bytes.  It does not include the 8 bytes used by ckID and ckDataSize .
@@ -498,7 +545,7 @@ The Comments Chunk is optional.  No more than one Comments Chunk may appear in a
 
 ## 8.0    SOUND  ACCELERATOR  (SAXEL)  CHUNK    -      **    Under  Construction!    **
 
-## **  WARNING**
+**WARNING**
 
 **This  is  a  rough  proposal  and  discussion  only  at  this  time!!**
 
@@ -514,7 +561,7 @@ Please refer to appendix D for the Sound Accelerator Chunk proposal.
 
 The Instrument Chunk defines basic parameters that an instrument, such as a sampling keyboard, could use to play back the sound data.
 
-## Looping
+### Looping
 
 A portion of the sound data can be repeated in order to lengthen the sound.  This portion, called the loop segment , is repeated until interrupted by something like the release of a key on a sampling keyboard.
 
@@ -531,7 +578,11 @@ If looping is being done on compressed sound data, make sure to pay particular a
 The structure below describes a loop:
 
 ```
-typedef struct { short playMode; MarkerId beginLoop; MarkerId endLoop; } Loop;
+typedef struct {
+    short    playMode;
+    MarkerId beginLoop;
+    MarkerId endLoop;
+} Loop;
 ```
 
 19
@@ -539,22 +590,35 @@ typedef struct { short playMode; MarkerId beginLoop; MarkerId endLoop; } Loop;
 playMode specifies which type of looping to perform:
 
 ```
-#define NoLooping 0 #define ForwardLooping 1 #define ForwardBackwardLooping 2
+#define NoLooping 0
+#define ForwardLooping 1
+#define ForwardBackwardLooping 2
 ```
 
 NoLooping means ignore these loop points during playback.
 
 beginLoop and endLoop are marker ids that mark the begin and end positions of the loop segment.  The begin position must be less than the end position so the loop segment will have a positive length.  (If this is not the case, then ignore this loop segment.  No looping takes place.)
 
-## Instrument Chunk Format
+### Instrument Chunk Format
 
 The format of the data within an Instrument Chunk is described below.
 
 ```
-#define InstrumentID 'INST' /* ckID for Instrument Chunk */ typedef struct { ID ckID; /*  'INST'  */ long ckDataSize; char baseNote; char detune; char lowNote; char highNote; char lowVelocity; char highVelocity; short gain; Loop sustainLoop; Loop releaseLoop;
-```
-
-## } InstrumentChunk;
+#define InstrumentID 'INST' /* ckID for Instrument Chunk */
+typedef struct {
+    ID    ckID;             /*  'INST'  */
+    long  ckDataSize;
+    char  baseNote;
+    char  detune;
+    char  lowNote;
+    char  highNote;
+    char  lowVelocity;
+    char  highVelocity;
+    short gain;
+    Loop  sustainLoop;
+    Loop  releaseLoop;
+} InstrumentChunk;
+``````
 
 ckID is  always  'INST'. ckDataSize is  the  size  of  the  data  portion  of  the  chunk,  in  bytes.    For  the Instrument Chunk, ckDataSize is always 20.
 
@@ -589,10 +653,15 @@ The MIDI Data Chunk can be used to store MIDI data.  (Please refer to Musical In
 The primary purpose of this chunk is to store MIDI System Exclusive messages, although other types of MIDI data can be stored in this block as well.  As more instruments come on the market, they will likely have parameters that have not been included in the AIFF-C specification.  The MIDI System Exclusive messages for these instruments may contain many parameters that are not included in the Instrument Chunk .    For  example, a new sampling instrument may have more than the two loops defined in the Instrument Chunk .  These loops will likely be represented in the MIDI System Exclusive message for the new machine.  This MIDI System Exclusive message can be stored in the MIDI Data Chunk.
 
 ```
-#define MIDIDataID 'MIDI' /* ckID for MIDI Data Chunk */ typedef struct { ID ckID; /*  'MIDI'  */ long ckDataSize; unsigned char MIDIdata[]; } MIDIDataChunk; ckID is always ' MIDI '.
+#define MIDIDataID 'MIDI' /* ckID for MIDI Data Chunk */
+typedef struct {
+    ID            ckID;   /*  'MIDI'  */
+    long          ckDataSize;
+    unsigned char MIDIdata[];
+} MIDIDataChunk;
 ```
-
-ckDataSize is the size of the data portion of the chunk, in bytes.  It does not include the 8 bytes used by ckID and ckDataSize .  If ckDataSize is odd, a pad byte must follow this chunk.
+ckID is always ' MIDI '. ckDataSize is the size of the data portion of the chunk, in bytes.  It does not include 
+the 8 bytes used by ckID and ckDataSize. If ckDataSize is odd, a pad byte must follow this chunk.
 
 MIDIData contains a stream of MIDI data.
 
@@ -605,7 +674,12 @@ The MIDI Data Chunk is optional.  Any number of MIDI Data Chunks may exist in a 
 The Audio Recording Chunk contains information pertinent to audio recording devices.
 
 ```
-#define AudioRecordingID 'AESD' /* ckID for Audio Recording Chunk */ typedef struct { ID ckID; /*  'AESD'  */ long ckDataSize; unsigned char AESChannelStatusData[24]; } AudioRecordingChunk;
+#define AudioRecordingID 'AESD' /* ckID for Audio Recording Chunk */
+typedef struct {
+    ID            ckID;         /*  'AESD'  */
+    long          ckDataSize;
+    unsigned char AESChannelStatusData[24];
+} AudioRecordingChunk;
 ```
 
 ckID is always 'AESD'. ckDataSize is the size of the data portion of the chunk, in bytes.  For the Audio Recording Chunk, ckDataSize is always 24.
@@ -621,7 +695,13 @@ The Audio Recording Chunk is optional.  No more than one Audio Recording Chunk m
 The  Application  Specific  Chunk  can  be  used  for  any  purposes  whatsoever  by  manufacturers  of applications.  For example, an application that edits sounds might want to use this chunk to store editor state parameters such as magnification levels, last cursor position, and the like.
 
 ```
-#define ApplicationSpecificID 'APPL' /* ckID for Application Specific Chunk */ typedef struct { ID ckID; /*  'APPL'  */ long ckDataSize; OSType applicationSignature; char data[]; } ApplicationSpecificChunk;
+#define ApplicationSpecificID 'APPL' /* ckID for Application Specific Chunk */
+typedef struct {
+    ID     ckID;                     /*  'APPL'  */
+    long   ckDataSize;
+    OSType applicationSignature;
+    char   data[];
+} ApplicationSpecificChunk;
 ```
 
 ckID is always ' APPL '. ckDataSize is the size of the data portion of the chunk, in bytes.  It does not include the 8 bytes used by ckID and ckDataSize.
@@ -658,11 +738,17 @@ ckDataSize is the size of the data portion of the chunk, in this case the number
 
 text contains pure ASCII characters.  It is neither a pstring nor a C string.  The number of characters in text is determined by ckDataSize .  The meaning of the text depend on the chunk type, as described below:
 
-Name Chunk text contains the name of the sampled sound.  The Name Chunk is optional.  No more than one Name Chunk may exist within a FORM AIFC.
+### Name Chunk
 
-Author Chunk text contains one or more author names.  An author in this case is the creator of a sampled sound. The Author Chunk is optional.  No more than one Author Chunk may exist within a FORM AIFC.
+*text* contains the name of the sampled sound.  The Name Chunk is optional.  No more than one Name Chunk may exist 
+within a FORM AIFC.
 
-Copyright Chunk
+### Author Chunk
+
+*text* contains one or more author names.  An author in this case is the creator of a sampled sound. The Author Chunk 
+is optional.  No more than one Author Chunk may exist within a FORM AIFC.
+
+### Copyright Chunk
 
 The Copyright Chunk contains a copyright notice for the sound. text contains a date followed by the copyright owner.  The chunk ID ' (c) ' serves as the copyright character '  '.  For example, a Copyright Chunk containing the text "1988 Apple Computer, Inc." means "  1988 Apple Computer, Inc."
 
@@ -670,7 +756,7 @@ The Copyright Chunk is optional.  No more than one Copyright Chunk may exist wit
 
 25
 
-## Annotation Chunk
+### Annotation Chunk
 
 text contains a comment.  Use of this chunk is discouraged within FORM AIFC.  The more refined Comments Chunk should be used instead.  The Annotation Chunk is optional.  Any number of Annotation Chunks may exist within a FORM AIFC.
 
@@ -682,43 +768,31 @@ Several of the local chunks for FORM AIFC may contain duplicate information.  Fo
 
 Such conflicts are resolved by a defined precedence for chunks:
 
-Format Version Chunk
-
-Highest precedence
-
-Common Chunk
-
-Instrument Chunk
-
-Saxel Chunk
-
-Comments Chunk
-
-Marker Chunk
-
-Sound Data Chunk
-
-Name Chunk
-
-Author Chunk
-
-Copyright Chunk
-
-Annotation Chunk(s)
+- Format Version Chunk (Highest precedence)
+- Common Chunk
+- Instrument Chunk
+- Saxel Chunk
+- Comments Chunk
+- Marker Chunk
+- Sound Data Chunk
+- Name Chunk
+- Author Chunk
+- Copyright Chunk
+- Annotation Chunk(s)
 
 -- in the order they appear in the FORM
 
-Audio Recording Chunk
+- Audio Recording Chunk
+- MIDI Data Chunk(s)
+- Application Specific Chunks (Lowest precedence)
 
-MIDI Data Chunk(s)
+The Common Chunk has the highest precedence, while the Application Specific Chunk has the lowest. Information in 
+the Common Chunk always takes precedence over conflicting information in any other chunk. The Application Specific 
+Chunk always loses in conflicts with other chunks. By looking at the chunk hierarchy, for example, one sees that 
+the loop points in the Instrument Chunk take precedence over conflicting loop points found in the MIDI Data Chunk .
 
-Application Specific Chunks
-
-Lowest precedence
-
-The Common Chunk has the highest precedence, while the Application Specific Chunk has the lowest. Information in the Common Chunk always takes precedence over conflicting information in any other chunk.  The Application Specific Chunk always loses in conflicts with other chunks. By looking at the chunk hierarchy, for example, one sees that the loop points in the Instrument Chunk take precedence over conflicting loop points found in the MIDI Data Chunk .
-
-It  is  the  responsibility  of  applications  that  write  data  into  the  lower  precedence  chunks  to make  sure  that  the  higher  precedence  chunks  are  updated  accordingly.
+**It  is  the  responsibility  of  applications  that  write  data  into  the  lower  precedence  chunks  to make  
+sure  that  the  higher  precedence  chunks  are  updated  accordingly.**
 
 27
 
@@ -744,9 +818,11 @@ sample frame
 
 29
 
-2.  A file containing approximately 28.972 seconds of 8-bit sound data sampled at 22.25454 kHz and compressed by a factor of 3 using the Macintosh Audio Compression &amp; Expansion utility.
+2.  A file containing approximately 28.972 seconds of 8-bit sound data sampled at 22.25454 kHz and compressed by a 
+    factor of 3 using the Macintosh Audio Compression &amp; Expansion utility.
 
-NOTE:  The Sound Accelerator Chunk (Saxel) uses the preliminary version of Saxels as defined in appendix D.  This may change in the future subject to your feedback.
+NOTE:  The Sound Accelerator Chunk (Saxel) uses the preliminary version of Saxels as defined in appendix D.  This 
+may change in the future subject to your feedback.
 
 FORM AIFC file
 
@@ -1045,8 +1121,8 @@ The  data  format  for  a  Saxel  is  inherently  specific  to  the  compression
 
 how  to  process  the  Saxel  Chunks  for  each  compression  type  they  support.    We  are primarily  interested  in  your  feedback  on  the  following:
 
-- ¥    Is  the  Saxel  Chunk  as  described  below  for  Apple's  audio  compression  algorithms suitable?
-- ¥    What  would  you  need  in  a  Saxel  for  another  compression  algorithm  you  want  to support?
+- Is  the  Saxel  Chunk  as  described  below  for  Apple's  audio  compression  algorithms suitable?
+- What  would  you  need  in  a  Saxel  for  another  compression  algorithm  you  want  to support?
 
 Saxel
 
