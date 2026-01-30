@@ -11,8 +11,8 @@ BUILD_PREF = build/
 LIB_PREF = lib/libdiskerror_
 
 AUDIO_LIB = $(addprefix $(LIB_PREF), audio.a)
-AUDIO = AudioFile
-#AUDIO = AudioFile AudioSamples
+AUDIO = AudioFile AudioFormat
+#AUDIO = AudioFile AudioFormat AudioSamples
 AUDIO_OBJS = $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 
 #CLAPP_LIB = $(addprefix $(LIB_PREF), clapp.a)
@@ -30,7 +30,10 @@ $(AUDIO_LIB): $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 #$(CLAPP_LIB): $(CLAPP_OBJS)
 #	ar -rc $@ $(CLAPP_OBJS)
 
-$(addprefix $(BUILD_PREF), AudioFile.o): AudioFile.cp AudioFile.h Makefile
+$(addprefix $(BUILD_PREF), AudioFile.o): AudioFile.cp AudioFile.h AudioFormat.h Makefile
+	$(CXX) $(CXXFLAGS) -O3 $< -o $@
+
+$(addprefix $(BUILD_PREF), AudioFormat.o): AudioFormat.cp AudioFormat.h BigFloat80.h WAVE.h AIFF.h Makefile
 	$(CXX) $(CXXFLAGS) -O3 $< -o $@
 
 $(addprefix $(BUILD_PREF), AudioSamples.o): AudioSamples.cp AudioSamples.h Makefile

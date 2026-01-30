@@ -13,6 +13,8 @@
 
 #include <boost/endian/arithmetic.hpp>
 
+#include "AudioFormat.h"
+
 namespace Diskerror {
 
 using namespace boost::endian;
@@ -52,9 +54,12 @@ class AudioFile {
 		fourcc_t type{0};
 	} m_header{};
 
+	//	Parsed format information (from 'fmt ' or 'COMM' chunk).
+	AudioFormat m_format;
+
 	//	Non-audio chunks stored as opaque byte blobs.
 	//	Each vector is a complete chunk: [ID 4][SIZE 4][payload...]
-	//	The data/SSND chunk is NOT in this list.
+	//	The data/SSND chunk and format chunk are NOT in this list.
 	std::vector<std::vector<uint8_t>> m_chunks;
 
 	//	Audio data region tracking
@@ -128,6 +133,8 @@ public:
 	[[nodiscard]] AudioType type() const;
 	[[nodiscard]] int64_t dataSize() const;
 	[[nodiscard]] const std::filesystem::path& path() const;
+	[[nodiscard]] const AudioFormat& format() const;
+	AudioFormat& format();
 };
 
 } // namespace Diskerror
