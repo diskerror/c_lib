@@ -53,10 +53,10 @@ class AudioFile {
 	std::vector<std::vector<uint8_t>> m_chunks;
 
 	//	Audio data region tracking
-	int64_t m_dataStart = 0;    //	file offset of first audio byte
-	int64_t m_dataSize  = 0;    //	current audio payload size in bytes
-	int64_t m_readPos   = 0;    //	read position relative to m_dataStart
-	int64_t m_writePos  = 0;    //	write position relative to m_dataStart
+	int64_t m_dataStart = 0; //	file offset of first audio byte
+	int64_t m_dataSize  = 0; //	current audio payload size in bytes
+	int64_t m_readPos   = 0; //	read position relative to m_dataStart
+	int64_t m_writePos  = 0; //	write position relative to m_dataStart
 	bool    m_dirty     = false;
 
 	//	Internal helpers
@@ -76,7 +76,7 @@ public:
 	AudioFile& operator=(AudioFile&& other) noexcept;
 
 	//	No copy
-	AudioFile(const AudioFile&) = delete;
+	AudioFile(const AudioFile&)            = delete;
 	AudioFile& operator=(const AudioFile&) = delete;
 
 	//	Destructor — flushes if dirty
@@ -126,9 +126,9 @@ public:
 
 	// --- Queries ---
 
-	[[nodiscard]] bool isLittleEndian() const;
-	[[nodiscard]] AudioType type() const;
-	[[nodiscard]] int64_t dataSize() const;
+	[[nodiscard]] bool                         isLittleEndian() const;
+	[[nodiscard]] AudioType                    type() const;
+	[[nodiscard]] int64_t                      dataSize() const;
 	[[nodiscard]] const std::filesystem::path& path() const;
 
 	//	Set the container type field (bytes 9-12): WAVE, AIFF, AIFC, etc.

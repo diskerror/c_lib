@@ -127,13 +127,13 @@ void AudioFile::writeHeaders() {
 
 	//	Write alignment chunk (JUNK for WAVE, PAD for AIFF)
 	if (m_type == AudioType::Wave) {
-		fourcc_t junkId = 'JUNK';
+		fourcc_t        junkId   = 'JUNK';
 		little_uint32_t junkSize = static_cast<uint32_t>(fillPayload);
 		m_file.write(reinterpret_cast<const char*>(&junkId), 4);
 		m_file.write(reinterpret_cast<const char*>(&junkSize), 4);
 	}
 	else {
-		fourcc_t padId = 'PAD ';
+		fourcc_t     padId   = 'PAD ';
 		big_uint32_t padSize = static_cast<uint32_t>(fillPayload);
 		m_file.write(reinterpret_cast<const char*>(&padId), 4);
 		m_file.write(reinterpret_cast<const char*>(&padSize), 4);
@@ -146,19 +146,19 @@ void AudioFile::writeHeaders() {
 
 	//	Write data chunk header
 	if (m_type == AudioType::Wave) {
-		fourcc_t dataId = 'data';
+		fourcc_t        dataId   = 'data';
 		little_uint32_t dataSize = static_cast<uint32_t>(m_dataSize);
 		m_file.write(reinterpret_cast<const char*>(&dataId), 4);
 		m_file.write(reinterpret_cast<const char*>(&dataSize), 4);
 	}
 	else {
-		fourcc_t ssndId = 'SSND';
+		fourcc_t     ssndId   = 'SSND';
 		big_uint32_t ssndSize = static_cast<uint32_t>(m_dataSize + 8); // +8 for offset and blockSize fields
-		big_uint32_t zero = 0;
+		big_uint32_t zero     = 0;
 		m_file.write(reinterpret_cast<const char*>(&ssndId), 4);
 		m_file.write(reinterpret_cast<const char*>(&ssndSize), 4);
-		m_file.write(reinterpret_cast<const char*>(&zero), 4);  // offset = 0
-		m_file.write(reinterpret_cast<const char*>(&zero), 4);  // blockSize = 0
+		m_file.write(reinterpret_cast<const char*>(&zero), 4); // offset = 0
+		m_file.write(reinterpret_cast<const char*>(&zero), 4); // blockSize = 0
 	}
 
 	m_file.flush();
@@ -239,7 +239,7 @@ AudioFile::AudioFile(const filesystem::path& path) : m_path(path) {
 			case 'data': {
 				//	WAVE audio data chunk
 				m_dataStart = m_file.tellg();
-				m_dataSize = (isRF64 && rf64DataSize >= 0) ? rf64DataSize : payloadSize;
+				m_dataSize  = (isRF64 && rf64DataSize >= 0) ? rf64DataSize : payloadSize;
 				//	Skip past audio payload
 				m_file.seekg(m_dataSize, ios_base::cur);
 				break;
@@ -252,8 +252,8 @@ AudioFile::AudioFile(const filesystem::path& path) : m_path(path) {
 				m_file.read(reinterpret_cast<char*>(&ssndBlockSize), 4);
 
 				uint32_t offsetVal = ssndOffset;
-				m_dataStart = static_cast<int64_t>(m_file.tellg()) + offsetVal;
-				m_dataSize = payloadSize - 8 - offsetVal; // SIZE - offset/blockSize fields - offset value
+				m_dataStart        = static_cast<int64_t>(m_file.tellg()) + offsetVal;
+				m_dataSize         = payloadSize - 8 - offsetVal; // SIZE - offset/blockSize fields - offset value
 
 				//	Skip past audio payload
 				m_file.seekg(payloadSize - 8, ios_base::cur);
@@ -339,7 +339,8 @@ AudioFile& AudioFile::operator=(AudioFile&& other) noexcept {
 	if (this != &other) {
 		//	Flush current state if dirty
 		if (m_dirty) {
-			try { flush(); } catch (...) {}
+			try { flush(); }
+			catch (...) {}
 		}
 
 		m_path      = std::move(other.m_path);
@@ -367,7 +368,8 @@ AudioFile& AudioFile::operator=(AudioFile&& other) noexcept {
 //	Destructor
 AudioFile::~AudioFile() {
 	if (m_dirty) {
-		try { flush(); } catch (...) {}
+		try { flush(); }
+		catch (...) {}
 	}
 }
 
@@ -428,7 +430,7 @@ streamsize AudioFile::read(char* buf, streamsize count) {
 	m_file.read(buf, count);
 
 	auto bytesRead = m_file.gcount();
-	m_readPos += bytesRead;
+	m_readPos      += bytesRead;
 	return bytesRead;
 }
 
@@ -517,7 +519,7 @@ void AudioFile::flush() {
 	else {
 		//	Verify chunks still fit
 		const int64_t dataHdrSize = (m_type == AudioType::Wave) ? 8 : 16;
-		int64_t overhead = 12 + allChunksSize() + 8 + dataHdrSize;
+		int64_t       overhead    = 12 + allChunksSize() + 8 + dataHdrSize;
 		if (overhead > m_dataStart)
 			throw runtime_error("Chunks exceed allocated header space.");
 	}
