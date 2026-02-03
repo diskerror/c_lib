@@ -8,24 +8,17 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <span>
 #include <vector>
 
 #include <boost/endian/arithmetic.hpp>
 
-#include "AudioFormat.h"
+#include "AudioTypes.h"
 
 namespace Diskerror {
 
 using namespace boost::endian;
-
-typedef big_uint32_t fourcc_t;
-
-enum class AudioType : uint8_t {
-	Unknown = 0,
-	Wave,
-	Aiff
-};
 
 /**
  *	AudioFile
@@ -54,12 +47,9 @@ class AudioFile {
 		fourcc_t type{0};
 	} m_header{};
 
-	//	Parsed format information (from 'fmt ' or 'COMM' chunk).
-	AudioFormat m_format;
-
 	//	Non-audio chunks stored as opaque byte blobs.
 	//	Each vector is a complete chunk: [ID 4][SIZE 4][payload...]
-	//	The data/SSND chunk and format chunk are NOT in this list.
+	//	The data/SSND chunk is NOT in this list; all other chunks are.
 	std::vector<std::vector<uint8_t>> m_chunks;
 
 	//	Audio data region tracking
@@ -110,6 +100,13 @@ public:
 	//	Remove the chunk at index.
 	void deleteChunk(size_t index);
 
+	//	Find first chunk with matching FourCC ID. Returns index or nullopt.
+	[[nodiscard]] std::optional<size_t> findChunk(fourcc_t id) const;
+
+	//	Replace existing chunk with matching FourCC ID, or append if not found.
+	//	blob must be a complete chunk: [ID 4][SIZE 4][payload...]
+	void setChunk(std::vector<uint8_t> blob);
+
 	// --- Audio data I/O (positions relative to start of audio data) ---
 
 	std::streamsize read(char* buf, std::streamsize count);
@@ -133,8 +130,9 @@ public:
 	[[nodiscard]] AudioType type() const;
 	[[nodiscard]] int64_t dataSize() const;
 	[[nodiscard]] const std::filesystem::path& path() const;
-	[[nodiscard]] const AudioFormat& format() const;
-	AudioFormat& format();
+
+	//	Set the container type field (bytes 9-12): WAVE, AIFF, AIFC, etc.
+	void setContainerType(fourcc_t type);
 };
 
 } // namespace Diskerror

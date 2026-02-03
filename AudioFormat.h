@@ -9,13 +9,13 @@
 #include <span>
 #include <vector>
 
-#include <boost/endian/arithmetic.hpp>
+#include "AudioTypes.h"
+#include "WAVE.h"
+#include "AIFF.h"
 
 namespace Diskerror {
 
-using namespace boost::endian;
-
-typedef big_uint32_t fourcc_t;
+class AudioFile;  // forward declaration
 
 enum class SampleEncoding : uint8_t {
 	Unknown = 0,
@@ -29,19 +29,19 @@ enum class SampleEncoding : uint8_t {
 };
 
 class AudioFormat {
-	SampleEncoding m_encoding           = SampleEncoding::PCM;
-	uint16_t       m_channels           = 1;
-	double         m_sampleRate         = 44100.0;
-	uint16_t       m_bitsPerSample      = 16;
-	uint32_t       m_numSampleFrames    = 0;
-	bool           m_sampleLittleEndian = false;
-	uint16_t       m_rawWaveFormatTag   = 0;
-	fourcc_t       m_rawAifcCompression{0};
+	SampleEncoding m_encoding = SampleEncoding::PCM;
+	AudioType      m_type     = AudioType::Unknown;
+	fmt_t          m_waveFmt{};
+	COMM_t         m_aiffComm{};
 
 public:
 	AudioFormat() = default;
 
-	// --- Factory methods ---
+	//	Construct from an AudioFile: reads type, finds format chunk, parses it.
+	//	If no format chunk exists (new file), initializes sensible defaults for the type.
+	explicit AudioFormat(const AudioFile& file);
+
+	// --- Factory methods (standalone parsing) ---
 
 	//	Parse a complete 'fmt ' chunk blob: [ID 4][SIZE 4][payload 16+]
 	static AudioFormat fromWaveFmt(std::span<const uint8_t> blob);
@@ -51,47 +51,50 @@ public:
 
 	// --- Serialization ---
 
-	//	Produce a complete 'fmt ' chunk blob: [ID 4][SIZE 4][payload]
-	[[nodiscard]] std::vector<uint8_t> toWaveFmt() const;
-
-	//	Produce a complete 'COMM' chunk blob: [ID 4][SIZE 4][payload]
-	[[nodiscard]] std::vector<uint8_t> toAiffComm() const;
+	//	Produce the appropriate format chunk blob based on stored type.
+	//	Returns 'fmt ' blob for Wave, 'COMM' blob for Aiff.
+	[[nodiscard]] std::vector<uint8_t> toChunk() const;
 
 	// --- Query methods ---
 
-	[[nodiscard]] bool isLinear() const { return m_encoding == SampleEncoding::PCM || m_encoding == SampleEncoding::Float; }
-	[[nodiscard]] bool requiresAifc() const { return !(m_encoding == SampleEncoding::PCM && !m_sampleLittleEndian); }
-
 	[[nodiscard]] SampleEncoding encoding() const { return m_encoding; }
-	[[nodiscard]] uint16_t channels() const { return m_channels; }
-	[[nodiscard]] double sampleRate() const { return m_sampleRate; }
-	[[nodiscard]] uint16_t bitsPerSample() const { return m_bitsPerSample; }
-	[[nodiscard]] uint32_t numSampleFrames() const { return m_numSampleFrames; }
-	[[nodiscard]] bool sampleLittleEndian() const { return m_sampleLittleEndian; }
-	[[nodiscard]] uint16_t rawWaveFormatTag() const { return m_rawWaveFormatTag; }
-	[[nodiscard]] fourcc_t rawAifcCompression() const { return m_rawAifcCompression; }
+	[[nodiscard]] AudioType type() const { return m_type; }
+	[[nodiscard]] bool isLinear() const { return m_encoding == SampleEncoding::PCM || m_encoding == SampleEncoding::Float; }
+	[[nodiscard]] bool requiresAifc() const;
 
-	[[nodiscard]] uint16_t bytesPerFrame() const {
-		return m_channels * ((m_bitsPerSample + 7) / 8);
-	}
+	// --- Convenience accessors (format-agnostic) ---
+	//	These dispatch to the appropriate internal struct based on m_type.
 
-	[[nodiscard]] uint32_t bytesPerSecond() const {
-		return bytesPerFrame() * static_cast<uint32_t>(m_sampleRate);
-	}
+	[[nodiscard]] uint16_t channels() const;
+	[[nodiscard]] double   sampleRate() const;
+	[[nodiscard]] uint16_t bitsPerSample() const;
+	[[nodiscard]] uint32_t numSampleFrames() const;
+	[[nodiscard]] uint16_t bytesPerFrame() const;
+	[[nodiscard]] uint32_t bytesPerSecond() const;
 
-	void updateFrameCount(int64_t dataSize) {
-		if (isLinear() && bytesPerFrame() > 0)
-			m_numSampleFrames = static_cast<uint32_t>(dataSize / bytesPerFrame());
-	}
+	void setChannels(uint16_t c);
+	void setSampleRate(double r);
+	void setBitsPerSample(uint16_t b);
+	void setNumSampleFrames(uint32_t n);
 
-	// --- Setters ---
+	//	Auto-compute frame count from audio data size (for linear formats).
+	void updateFrameCount(int64_t dataSize);
 
-	void setEncoding(SampleEncoding e) { m_encoding = e; }
-	void setChannels(uint16_t c) { m_channels = c; }
-	void setSampleRate(double r) { m_sampleRate = r; }
-	void setBitsPerSample(uint16_t b) { m_bitsPerSample = b; }
-	void setNumSampleFrames(uint32_t n) { m_numSampleFrames = n; }
-	void setSampleLittleEndian(bool le) { m_sampleLittleEndian = le; }
+	// --- Encoding setter ---
+
+	void setEncoding(SampleEncoding e);
+
+	// --- Direct struct access (for compressed/non-standard formats) ---
+
+	[[nodiscard]] const fmt_t&  waveFmt() const  { return m_waveFmt; }
+	[[nodiscard]] fmt_t&        waveFmt()        { return m_waveFmt; }
+	[[nodiscard]] const COMM_t& aiffComm() const { return m_aiffComm; }
+	[[nodiscard]] COMM_t&       aiffComm()       { return m_aiffComm; }
+
+private:
+	//	Internal serialization helpers
+	[[nodiscard]] std::vector<uint8_t> toWaveFmt() const;
+	[[nodiscard]] std::vector<uint8_t> toAiffComm() const;
 };
 
 } // namespace Diskerror

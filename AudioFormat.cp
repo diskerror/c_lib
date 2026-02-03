@@ -2,15 +2,61 @@
 // Created by Reid Woodbury.
 //
 
-#include "AudioFormat.h"
-#include "BigFloat80.h"
 
+#include "AudioFormat.h"
+#include "AudioFile.h"
+
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
 namespace Diskerror {
 
 using namespace std;
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	Constructor from AudioFile
+////////////////////////////////////////////////////////////////////////////////
+
+AudioFormat::AudioFormat(const AudioFile& file) : m_type(file.type()) {
+	if (m_type == AudioType::Wave) {
+		auto idx = file.findChunk('fmt ');
+		if (idx.has_value()) {
+			auto parsed = fromWaveFmt(file.chunk(*idx));
+			m_encoding = parsed.m_encoding;
+			m_waveFmt  = parsed.m_waveFmt;
+		}
+		else {
+			//	New file — sensible defaults
+			m_encoding = SampleEncoding::PCM;
+			m_waveFmt.type           = 0x0001;
+			m_waveFmt.channelCount   = 1;
+			m_waveFmt.sampleRate     = 44100;
+			m_waveFmt.bitsPerSample  = 16;
+			m_waveFmt.blockAlignment = 2;      // 1 channel * 2 bytes
+			m_waveFmt.bytesPerSecond = 88200;  // 44100 * 2
+		}
+	}
+	else if (m_type == AudioType::Aiff) {
+		auto idx = file.findChunk('COMM');
+		if (idx.has_value()) {
+			auto parsed = fromAiffComm(file.chunk(*idx));
+			m_encoding = parsed.m_encoding;
+			m_aiffComm = parsed.m_aiffComm;
+		}
+		else {
+			//	New file — sensible defaults
+			m_encoding = SampleEncoding::PCM;
+			m_aiffComm.numChannels = 1;
+			m_aiffComm.sampleSize  = 16;
+			m_aiffComm.sampleRate  = 44100.0;
+		}
+	}
+	else {
+		throw runtime_error("Cannot create AudioFormat for unknown audio type.");
+	}
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -22,38 +68,23 @@ AudioFormat AudioFormat::fromWaveFmt(span<const uint8_t> blob) {
 	if (blob.size() < 24)
 		throw runtime_error("fmt chunk too small.");
 
-	const uint8_t* p = blob.data() + 8; // skip ID and SIZE
-
 	AudioFormat af;
-	af.m_sampleLittleEndian = true;
+	af.m_type = AudioType::Wave;
 
-	little_uint16_t formatTag;
-	little_uint16_t channels;
-	little_uint32_t sampleRate;
-	little_uint32_t bytesPerSec;
-	little_uint16_t blockAlign;
-	little_uint16_t bitsPerSample;
+	//	Copy blob directly into m_waveFmt (it shares the on-disk layout).
+	//	Extra fields beyond blob stay zero-initialized.
+	size_t copyLen = min(blob.size(), sizeof(fmt_t));
+	memcpy(&af.m_waveFmt, blob.data(), copyLen);
 
-	memcpy(&formatTag,    p,      2);
-	memcpy(&channels,     p + 2,  2);
-	memcpy(&sampleRate,   p + 4,  4);
-	memcpy(&bytesPerSec,  p + 8,  4);
-	memcpy(&blockAlign,   p + 12, 2);
-	memcpy(&bitsPerSample,p + 14, 2);
-
-	af.m_rawWaveFormatTag = formatTag;
-	af.m_channels         = channels;
-	af.m_sampleRate       = static_cast<double>(static_cast<uint32_t>(sampleRate));
-	af.m_bitsPerSample    = bitsPerSample;
-
-	switch (static_cast<uint16_t>(formatTag)) {
-		case 0x0001: af.m_encoding = SampleEncoding::PCM;       break;
-		case 0x0003: af.m_encoding = SampleEncoding::Float;     break;
-		case 0x0006: af.m_encoding = SampleEncoding::ALaw;      break;
-		case 0x0007: af.m_encoding = SampleEncoding::ULaw;      break;
-		case 0x0011: af.m_encoding = SampleEncoding::IMA_ADPCM; break;
+	//	Derive SampleEncoding from the format tag
+	switch (static_cast<uint16_t>(af.m_waveFmt.type)) {
+		case 0x0001: af.m_encoding = SampleEncoding::PCM;        break;
+		case 0x0003: af.m_encoding = SampleEncoding::Float;      break;
+		case 0x0006: af.m_encoding = SampleEncoding::ALaw;       break;
+		case 0x0007: af.m_encoding = SampleEncoding::ULaw;       break;
+		case 0x0011: af.m_encoding = SampleEncoding::IMA_ADPCM;  break;
 		case 0xFFFE: af.m_encoding = SampleEncoding::Extensible; break;
-		default:     af.m_encoding = SampleEncoding::Other;     break;
+		default:     af.m_encoding = SampleEncoding::Other;      break;
 	}
 
 	return af;
@@ -69,55 +100,46 @@ AudioFormat AudioFormat::fromAiffComm(span<const uint8_t> blob) {
 	if (blob.size() < 26)
 		throw runtime_error("COMM chunk too small.");
 
-	const uint8_t* p = blob.data() + 8; // skip ID and SIZE
-
-	//	Read payload size from header
-	big_uint32_t payloadSizeBE;
-	memcpy(&payloadSizeBE, blob.data() + 4, 4);
-	uint32_t payloadSize = payloadSizeBE;
-
 	AudioFormat af;
-	af.m_sampleLittleEndian = false;
+	af.m_type = AudioType::Aiff;
 
-	big_uint16_t channels;
-	big_uint32_t numSampleFrames;
-	big_uint16_t sampleSize;
+	//	Copy the base commChunk_t portion (26 bytes: 8 header + 18 payload).
+	//	Cannot memcpy the full COMM_t because compressionName is 256 fixed bytes
+	//	but variable-length on disk.
+	memcpy(&af.m_aiffComm, blob.data(), 26);
 
-	memcpy(&channels,        p,      2);
-	memcpy(&numSampleFrames, p + 2,  4);
-	memcpy(&sampleSize,      p + 6,  2);
+	//	Read payload size to determine if this is extended COMM (AIFC)
+	uint32_t payloadSize = af.m_aiffComm.size;
 
-	af.m_channels         = channels;
-	af.m_numSampleFrames  = numSampleFrames;
-	af.m_bitsPerSample    = sampleSize;
+	if (payloadSize >= 23 && blob.size() >= 30) {
+		//	AIFC extended COMM: compressionType at offset 26
+		memcpy(&af.m_aiffComm.compressionType, blob.data() + 26, 4);
 
-	//	Sample rate is 80-bit extended float at offset 8
-	BigFloat80 bf80;
-	memcpy(&bf80, p + 8, 10);
-	af.m_sampleRate = bf80.toDouble();
+		//	Pascal string at offset 30: length byte + chars
+		if (blob.size() > 30) {
+			uint8_t nameLen = blob[30];
+			size_t available = blob.size() - 31;
+			size_t toCopy = min(static_cast<size_t>(nameLen), min(available, size_t(255)));
+			af.m_aiffComm.compressionName[0] = static_cast<char>(nameLen);
+			if (toCopy > 0)
+				memcpy(&af.m_aiffComm.compressionName[1], blob.data() + 31, toCopy);
+		}
 
-	if (payloadSize >= 23) {
-		//	Extended COMM (AIFC) — has compressionType + compressionName
-		fourcc_t compressionType;
-		memcpy(&compressionType, p + 18, 4);
-		af.m_rawAifcCompression = compressionType;
-
-		uint32_t ct = compressionType;
+		//	Derive SampleEncoding from compressionType
+		uint32_t ct = af.m_aiffComm.compressionType;
 		if (ct == 'NONE' || ct == 'twos') {
 			af.m_encoding = SampleEncoding::PCM;
-			af.m_sampleLittleEndian = false;
 		}
 		else if (ct == 'sowt') {
 			af.m_encoding = SampleEncoding::PCM;
-			af.m_sampleLittleEndian = true;
 		}
 		else if (ct == 'fl32') {
 			af.m_encoding = SampleEncoding::Float;
-			af.m_bitsPerSample = 32;
+			af.m_aiffComm.sampleSize = 32;
 		}
 		else if (ct == 'fl64') {
 			af.m_encoding = SampleEncoding::Float;
-			af.m_bitsPerSample = 64;
+			af.m_aiffComm.sampleSize = 64;
 		}
 		else if (ct == 'ulaw') {
 			af.m_encoding = SampleEncoding::ULaw;
@@ -135,10 +157,23 @@ AudioFormat AudioFormat::fromAiffComm(span<const uint8_t> blob) {
 	else {
 		//	Plain AIFF — no compression
 		af.m_encoding = SampleEncoding::PCM;
-		af.m_sampleLittleEndian = false;
 	}
 
 	return af;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	toChunk — produce the appropriate format chunk blob
+////////////////////////////////////////////////////////////////////////////////
+
+vector<uint8_t> AudioFormat::toChunk() const {
+	if (m_type == AudioType::Wave)
+		return toWaveFmt();
+	else if (m_type == AudioType::Aiff)
+		return toAiffComm();
+	else
+		throw runtime_error("Cannot serialize AudioFormat for unknown audio type.");
 }
 
 
@@ -147,52 +182,32 @@ AudioFormat AudioFormat::fromAiffComm(span<const uint8_t> blob) {
 ////////////////////////////////////////////////////////////////////////////////
 
 vector<uint8_t> AudioFormat::toWaveFmt() const {
-	//	Determine format tag
-	uint16_t tag;
-	switch (m_encoding) {
-		case SampleEncoding::PCM:       tag = 0x0001; break;
-		case SampleEncoding::Float:     tag = 0x0003; break;
-		case SampleEncoding::ALaw:      tag = 0x0006; break;
-		case SampleEncoding::ULaw:      tag = 0x0007; break;
-		case SampleEncoding::IMA_ADPCM: tag = 0x0011; break;
-		case SampleEncoding::Extensible:tag = 0xFFFE; break;
-		case SampleEncoding::Other:     tag = m_rawWaveFormatTag; break;
-		default:                        tag = m_rawWaveFormatTag; break;
+	//	Determine output size from format tag
+	uint16_t tag = m_waveFmt.type;
+	size_t totalBytes;
+
+	if (tag == 0x0001) {
+		//	PCM: FormatData_t (8 header + 16 payload)
+		totalBytes = sizeof(FormatData_t);
+	}
+	else if (tag == 0xFFFE) {
+		//	Extensible: full fmt_t (8 header + 40 payload)
+		totalBytes = sizeof(fmt_t);
+	}
+	else {
+		//	Non-PCM, non-Extensible: FormatPlusData_t (8 header + 18 payload)
+		totalBytes = sizeof(FormatPlusData_t);
 	}
 
-	//	PCM uses 16-byte payload; non-PCM uses 18 (with cbSize=0)
-	uint32_t payloadSize = (tag == 0x0001) ? 16 : 18;
-	vector<uint8_t> out(8 + payloadSize);
+	vector<uint8_t> out(totalBytes);
+	memcpy(out.data(), &m_waveFmt, totalBytes);
 
-	//	Chunk ID
+	//	Ensure chunk ID and size are correct
 	fourcc_t fmtId = 'fmt ';
 	memcpy(out.data(), &fmtId, 4);
 
-	//	Chunk size
-	little_uint32_t chunkSize = payloadSize;
-	memcpy(out.data() + 4, &chunkSize, 4);
-
-	//	Payload
-	uint8_t* p = out.data() + 8;
-
-	little_uint16_t leTag          = tag;
-	little_uint16_t leChannels     = m_channels;
-	little_uint32_t leSampleRate   = static_cast<uint32_t>(m_sampleRate);
-	little_uint32_t leBytesPerSec  = bytesPerSecond();
-	little_uint16_t leBlockAlign   = bytesPerFrame();
-	little_uint16_t leBitsPerSample = m_bitsPerSample;
-
-	memcpy(p,      &leTag,           2);
-	memcpy(p + 2,  &leChannels,      2);
-	memcpy(p + 4,  &leSampleRate,    4);
-	memcpy(p + 8,  &leBytesPerSec,   4);
-	memcpy(p + 12, &leBlockAlign,    2);
-	memcpy(p + 14, &leBitsPerSample, 2);
-
-	if (payloadSize >= 18) {
-		little_uint16_t cbSize = 0;
-		memcpy(p + 16, &cbSize, 2);
-	}
+	little_uint32_t payloadSize = static_cast<uint32_t>(totalBytes - 8);
+	memcpy(out.data() + 4, &payloadSize, 4);
 
 	return out;
 }
@@ -205,105 +220,199 @@ vector<uint8_t> AudioFormat::toWaveFmt() const {
 vector<uint8_t> AudioFormat::toAiffComm() const {
 	bool aifc = requiresAifc();
 
-	//	Determine compression type and name for AIFC
-	fourcc_t compressionType{0};
-	string compressionName;
+	if (!aifc) {
+		//	Plain AIFF: 26 bytes (8 header + 18 payload)
+		vector<uint8_t> out(26);
+		memcpy(out.data(), &m_aiffComm, 26);
 
-	if (aifc) {
-		switch (m_encoding) {
-			case SampleEncoding::PCM:
-				if (m_sampleLittleEndian) {
-					compressionType = 'sowt';
-					compressionName = "little-endian";
-				}
-				else {
-					compressionType = 'NONE';
-					compressionName = "not compressed";
-				}
-				break;
-			case SampleEncoding::Float:
-				if (m_bitsPerSample == 64) {
-					compressionType = 'fl64';
-					compressionName = "64-bit floating point";
-				}
-				else {
-					compressionType = 'fl32';
-					compressionName = "32-bit floating point";
-				}
-				break;
-			case SampleEncoding::ULaw:
-				compressionType = 'ulaw';
-				compressionName = "u-law";
-				break;
-			case SampleEncoding::ALaw:
-				compressionType = 'ALAW';
-				compressionName = "A-law";
-				break;
-			case SampleEncoding::IMA_ADPCM:
-				compressionType = 'ima4';
-				compressionName = "IMA ADPCM";
-				break;
-			case SampleEncoding::Other:
-				compressionType = m_rawAifcCompression;
-				compressionName = "unknown";
-				break;
-			default:
-				compressionType = m_rawAifcCompression;
-				compressionName = "unknown";
-				break;
-		}
+		//	Ensure chunk header
+		fourcc_t commId = 'COMM';
+		memcpy(out.data(), &commId, 4);
+		big_uint32_t payloadSize = 18;
+		memcpy(out.data() + 4, &payloadSize, 4);
+
+		return out;
 	}
 
-	//	Base payload: 18 bytes (channels 2 + frames 4 + sampleSize 2 + sampleRate 10)
-	uint32_t payloadSize = 18;
-	if (aifc) {
-		//	+ compressionType(4) + Pascal string (1 len + chars)
-		uint32_t pstrLen = 1 + static_cast<uint32_t>(compressionName.size());
-		//	Pascal string total must be even
-		if (pstrLen & 1) pstrLen++;
-		payloadSize += 4 + pstrLen;
-	}
+	//	AIFC: base 26 bytes + 4 compressionType + Pascal string
+	uint8_t nameLen = static_cast<uint8_t>(m_aiffComm.compressionName[0]);
+	uint32_t pstrTotal = 1 + nameLen;
+	if (pstrTotal & 1) pstrTotal++; // pad to even
 
+	uint32_t payloadSize = 18 + 4 + pstrTotal;
 	vector<uint8_t> out(8 + payloadSize);
 
-	//	Chunk ID
+	//	Copy base 26 bytes (header + base payload)
+	memcpy(out.data(), &m_aiffComm, 26);
+
+	//	Ensure chunk header
 	fourcc_t commId = 'COMM';
 	memcpy(out.data(), &commId, 4);
+	big_uint32_t bPayloadSize = payloadSize;
+	memcpy(out.data() + 4, &bPayloadSize, 4);
 
-	//	Chunk size (big-endian)
-	big_uint32_t chunkSize = payloadSize;
-	memcpy(out.data() + 4, &chunkSize, 4);
+	//	compressionType at offset 26
+	memcpy(out.data() + 26, &m_aiffComm.compressionType, 4);
 
-	//	Payload
-	uint8_t* p = out.data() + 8;
-
-	big_uint16_t beChannels     = m_channels;
-	big_uint32_t beFrames       = m_numSampleFrames;
-	big_uint16_t beSampleSize   = m_bitsPerSample;
-
-	memcpy(p,     &beChannels,   2);
-	memcpy(p + 2, &beFrames,     4);
-	memcpy(p + 6, &beSampleSize, 2);
-
-	//	Sample rate as 80-bit float
-	BigFloat80 bf80(m_sampleRate);
-	memcpy(p + 8, &bf80, 10);
-
-	if (aifc) {
-		memcpy(p + 18, &compressionType, 4);
-
-		//	Pascal string: length byte + chars + pad to even
-		uint8_t nameLen = static_cast<uint8_t>(compressionName.size());
-		p[22] = nameLen;
-		if (nameLen > 0)
-			memcpy(p + 23, compressionName.data(), nameLen);
-		//	Pad byte if total (1+nameLen) is odd
-		uint32_t pstrTotal = 1 + nameLen;
-		if (pstrTotal & 1)
-			p[22 + pstrTotal] = 0;
-	}
+	//	Pascal string at offset 30
+	out[30] = nameLen;
+	if (nameLen > 0)
+		memcpy(out.data() + 31, &m_aiffComm.compressionName[1], nameLen);
+	//	Pad byte is already zero from vector initialization
 
 	return out;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	requiresAifc
+////////////////////////////////////////////////////////////////////////////////
+
+bool AudioFormat::requiresAifc() const {
+	return m_encoding != SampleEncoding::PCM;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	setEncoding — sync struct fields with encoding
+////////////////////////////////////////////////////////////////////////////////
+
+void AudioFormat::setEncoding(SampleEncoding e) {
+	m_encoding = e;
+
+	if (m_type == AudioType::Wave) {
+		switch (e) {
+			case SampleEncoding::PCM:        m_waveFmt.type = 0x0001; break;
+			case SampleEncoding::Float:      m_waveFmt.type = 0x0003; break;
+			case SampleEncoding::ALaw:       m_waveFmt.type = 0x0006; break;
+			case SampleEncoding::ULaw:       m_waveFmt.type = 0x0007; break;
+			case SampleEncoding::IMA_ADPCM:  m_waveFmt.type = 0x0011; break;
+			case SampleEncoding::Extensible: m_waveFmt.type = 0xFFFE; break;
+			default: break;
+		}
+	}
+	else if (m_type == AudioType::Aiff) {
+		switch (e) {
+			case SampleEncoding::PCM:
+				m_aiffComm.compressionType = 'NONE';
+				break;
+			case SampleEncoding::Float:
+				m_aiffComm.compressionType = (bitsPerSample() == 64) ? 'fl64' : 'fl32';
+				break;
+			case SampleEncoding::ULaw:
+				m_aiffComm.compressionType = 'ulaw';
+				break;
+			case SampleEncoding::ALaw:
+				m_aiffComm.compressionType = 'ALAW';
+				break;
+			case SampleEncoding::IMA_ADPCM:
+				m_aiffComm.compressionType = 'ima4';
+				break;
+			default: break;
+		}
+	}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	Convenience accessors — dispatch to appropriate struct
+////////////////////////////////////////////////////////////////////////////////
+
+uint16_t AudioFormat::channels() const {
+	if (m_type == AudioType::Wave)
+		return m_waveFmt.channelCount;
+	else
+		return m_aiffComm.numChannels;
+}
+
+double AudioFormat::sampleRate() const {
+	if (m_type == AudioType::Wave)
+		return static_cast<double>(static_cast<uint32_t>(m_waveFmt.sampleRate));
+	else
+		return m_aiffComm.sampleRate.toDouble();
+}
+
+uint16_t AudioFormat::bitsPerSample() const {
+	if (m_type == AudioType::Wave)
+		return m_waveFmt.bitsPerSample;
+	else
+		return m_aiffComm.sampleSize;
+}
+
+uint32_t AudioFormat::numSampleFrames() const {
+	if (m_type == AudioType::Aiff)
+		return m_aiffComm.numSampleFrames;
+	//	WAVE doesn't store frame count in fmt; derive from data size externally
+	return 0;
+}
+
+uint16_t AudioFormat::bytesPerFrame() const {
+	return channels() * ((bitsPerSample() + 7) / 8);
+}
+
+uint32_t AudioFormat::bytesPerSecond() const {
+	return bytesPerFrame() * static_cast<uint32_t>(sampleRate());
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	Convenience setters
+////////////////////////////////////////////////////////////////////////////////
+
+void AudioFormat::setChannels(uint16_t c) {
+	if (m_type == AudioType::Wave) {
+		m_waveFmt.channelCount = c;
+		//	Update derived WAVE fields
+		m_waveFmt.blockAlignment = c * ((static_cast<uint16_t>(m_waveFmt.bitsPerSample) + 7) / 8);
+		m_waveFmt.bytesPerSecond = static_cast<uint32_t>(m_waveFmt.blockAlignment)
+		                         * static_cast<uint32_t>(m_waveFmt.sampleRate);
+	}
+	else {
+		m_aiffComm.numChannels = c;
+	}
+}
+
+void AudioFormat::setSampleRate(double r) {
+	if (m_type == AudioType::Wave) {
+		m_waveFmt.sampleRate = static_cast<uint32_t>(r);
+		m_waveFmt.bytesPerSecond = static_cast<uint32_t>(m_waveFmt.blockAlignment)
+		                         * static_cast<uint32_t>(m_waveFmt.sampleRate);
+	}
+	else {
+		m_aiffComm.sampleRate = r;
+	}
+}
+
+void AudioFormat::setBitsPerSample(uint16_t b) {
+	if (m_type == AudioType::Wave) {
+		m_waveFmt.bitsPerSample = b;
+		uint16_t ch = m_waveFmt.channelCount;
+		m_waveFmt.blockAlignment = ch * ((b + 7) / 8);
+		m_waveFmt.bytesPerSecond = static_cast<uint32_t>(m_waveFmt.blockAlignment)
+		                         * static_cast<uint32_t>(m_waveFmt.sampleRate);
+	}
+	else {
+		m_aiffComm.sampleSize = b;
+	}
+}
+
+void AudioFormat::setNumSampleFrames(uint32_t n) {
+	if (m_type == AudioType::Aiff)
+		m_aiffComm.numSampleFrames = n;
+	//	WAVE doesn't store this in fmt
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	updateFrameCount — auto-compute from data size for linear formats
+////////////////////////////////////////////////////////////////////////////////
+
+void AudioFormat::updateFrameCount(int64_t dataSize) {
+	uint16_t bpf = bytesPerFrame();
+	if (isLinear() && bpf > 0) {
+		uint32_t frames = static_cast<uint32_t>(dataSize / bpf);
+		setNumSampleFrames(frames);
+	}
 }
 
 } // namespace Diskerror

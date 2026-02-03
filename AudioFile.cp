@@ -3,7 +3,6 @@
 //
 
 #include "AudioFile.h"
-#include "AudioFormat.h"
 
 #include <algorithm>
 #include <cstring>
@@ -19,30 +18,9 @@ using namespace boost::endian;
 //	Internal helpers
 ////////////////////////////////////////////////////////////////////////////////
 
-//	Total on-disk size of format chunk + all stored non-audio chunks, including word-alignment pad bytes.
+//	Total on-disk size of all stored non-audio chunks, including word-alignment pad bytes.
 int64_t AudioFile::allChunksSize() const {
 	int64_t total = 0;
-
-	//	Include the format chunk (not stored in m_chunks)
-	{
-		vector<uint8_t> fmtBlob = (m_type == AudioType::Wave) ? m_format.toWaveFmt() : m_format.toAiffComm();
-		total += static_cast<int64_t>(fmtBlob.size());
-		//	Word alignment for format chunk payload
-		uint32_t fmtPayloadSize;
-		if (m_type == AudioType::Wave) {
-			little_uint32_t ls;
-			memcpy(&ls, fmtBlob.data() + 4, 4);
-			fmtPayloadSize = ls;
-		}
-		else {
-			big_uint32_t bs;
-			memcpy(&bs, fmtBlob.data() + 4, 4);
-			fmtPayloadSize = bs;
-		}
-		if (fmtPayloadSize & 1)
-			total += 1;
-	}
-
 	for (auto& c : m_chunks) {
 		//	Chunk on disk = ID(4) + SIZE(4) + payload(SIZE bytes).
 		//	The vector already stores [ID][SIZE][payload], so c.size() is the total.
@@ -67,19 +45,25 @@ int64_t AudioFile::allChunksSize() const {
 }
 
 
-//	Write container header, format chunk, all non-audio chunks, alignment chunk, and data/SSND header.
+//	Write container header, all non-audio chunks (in spec order), alignment chunk, and data/SSND header.
 //	Does NOT touch the audio payload.
 void AudioFile::writeHeaders() {
-	//	Data header sizes
 	const int64_t dataHdrSize = (m_type == AudioType::Wave) ? 8 : 16;
 
-	//	For linear encodings, update frame count from data size
-	if (m_format.isLinear())
-		m_format.updateFrameCount(m_dataSize);
-
-	//	For AIFF containers, set type based on whether AIFC is required
-	if (m_type == AudioType::Aiff)
-		m_header.type = m_format.requiresAifc() ? 'AIFC' : 'AIFF';
+	//	For AIFF containers, structurally detect AIFC from COMM chunk payload size.
+	if (m_type == AudioType::Aiff) {
+		auto commIdx = findChunk('COMM');
+		bool isAifc = false;
+		if (commIdx.has_value()) {
+			auto& commBlob = m_chunks[*commIdx];
+			if (commBlob.size() > 8) {
+				big_uint32_t bs;
+				memcpy(&bs, commBlob.data() + 4, 4);
+				isAifc = (static_cast<uint32_t>(bs) > 18);
+			}
+		}
+		m_header.type = isAifc ? 'AIFC' : 'AIFF';
+	}
 
 	//	Update container header size field
 	//	Total file size = m_dataStart + m_dataSize
@@ -94,30 +78,28 @@ void AudioFile::writeHeaders() {
 	//	Write 12-byte container header
 	m_file.write(reinterpret_cast<const char*>(&m_header), 12);
 
-	//	Serialize and write the format chunk first
-	vector<uint8_t> fmtBlob = (m_type == AudioType::Wave) ? m_format.toWaveFmt() : m_format.toAiffComm();
-	m_file.write(reinterpret_cast<const char*>(fmtBlob.data()), static_cast<streamsize>(fmtBlob.size()));
-	//	Word-alignment pad byte for format chunk
-	{
-		uint32_t fmtPayloadSize;
-		if (m_type == AudioType::Wave) {
-			little_uint32_t ls;
-			memcpy(&ls, fmtBlob.data() + 4, 4);
-			fmtPayloadSize = ls;
-		}
-		else {
-			big_uint32_t bs;
-			memcpy(&bs, fmtBlob.data() + 4, 4);
-			fmtPayloadSize = bs;
-		}
-		if (fmtPayloadSize & 1) {
-			const char zero = 0;
-			m_file.write(&zero, 1);
-		}
+	//	Build ordered chunk index: ds64 first, then fmt/COMM, then everything else.
+	vector<size_t> order;
+	order.reserve(m_chunks.size());
+	for (size_t i = 0; i < m_chunks.size(); ++i) {
+		fourcc_t cid;
+		memcpy(&cid, m_chunks[i].data(), 4);
+		if (cid == 'ds64') order.push_back(i);
+	}
+	for (size_t i = 0; i < m_chunks.size(); ++i) {
+		fourcc_t cid;
+		memcpy(&cid, m_chunks[i].data(), 4);
+		if (cid == 'fmt ' || cid == 'COMM') order.push_back(i);
+	}
+	for (size_t i = 0; i < m_chunks.size(); ++i) {
+		fourcc_t cid;
+		memcpy(&cid, m_chunks[i].data(), 4);
+		if (cid != 'ds64' && cid != 'fmt ' && cid != 'COMM') order.push_back(i);
 	}
 
-	//	Write all non-audio chunks
-	for (auto& c : m_chunks) {
+	//	Write all non-audio chunks in order
+	for (auto i : order) {
+		auto& c = m_chunks[i];
 		m_file.write(reinterpret_cast<const char*>(c.data()), static_cast<streamsize>(c.size()));
 		//	Word-alignment pad byte
 		uint32_t payloadSize;
@@ -284,22 +266,13 @@ AudioFile::AudioFile(const filesystem::path& path) : m_path(path) {
 				memcpy(blob.data(), chunkHdr, 8);
 				m_file.read(reinterpret_cast<char*>(blob.data() + 8), payloadSize);
 
-				//	Intercept format chunks — parse into m_format, don't store in m_chunks
-				if (chunkId == 'fmt ' && m_type == AudioType::Wave) {
-					m_format = AudioFormat::fromWaveFmt(blob);
-				}
-				else if (chunkId == 'COMM' && m_type == AudioType::Aiff) {
-					m_format = AudioFormat::fromAiffComm(blob);
-				}
-				else {
-					m_chunks.push_back(std::move(blob));
+				m_chunks.push_back(std::move(blob));
 
-					//	For RF64: extract data size from ds64 chunk
-					if (chunkId == 'ds64' && isRF64 && payloadSize >= 24) {
-						little_int64_t ds64DataSize;
-						memcpy(&ds64DataSize, m_chunks.back().data() + 16, 8);
-						rf64DataSize = ds64DataSize;
-					}
+				//	For RF64: extract data size from ds64 chunk
+				if (chunkId == 'ds64' && isRF64 && payloadSize >= 24) {
+					little_int64_t ds64DataSize;
+					memcpy(&ds64DataSize, m_chunks.back().data() + 16, 8);
+					rf64DataSize = ds64DataSize;
 				}
 
 				//	Word-alignment: skip pad byte for odd payloads
@@ -331,7 +304,6 @@ AudioFile::AudioFile(const filesystem::path& path, AudioType type)
 		m_header.id    = 'RIFF';
 		m_header.lSize = 0;
 		m_header.type  = 'WAVE';
-		m_format.setSampleLittleEndian(true);
 	}
 	else {
 		m_header.id    = 'FORM';
@@ -347,7 +319,6 @@ AudioFile::AudioFile(AudioFile&& other) noexcept
 	  m_type(other.m_type),
 	  m_file(std::move(other.m_file)),
 	  m_header(other.m_header),
-	  m_format(std::move(other.m_format)),
 	  m_chunks(std::move(other.m_chunks)),
 	  m_dataStart(other.m_dataStart),
 	  m_dataSize(other.m_dataSize),
@@ -375,7 +346,6 @@ AudioFile& AudioFile::operator=(AudioFile&& other) noexcept {
 		m_type      = other.m_type;
 		m_file      = std::move(other.m_file);
 		m_header    = other.m_header;
-		m_format    = std::move(other.m_format);
 		m_chunks    = std::move(other.m_chunks);
 		m_dataStart = other.m_dataStart;
 		m_dataSize  = other.m_dataSize;
@@ -577,12 +547,39 @@ const filesystem::path& AudioFile::path() const {
 	return m_path;
 }
 
-const AudioFormat& AudioFile::format() const {
-	return m_format;
+void AudioFile::setContainerType(fourcc_t type) {
+	m_header.type = type;
 }
 
-AudioFormat& AudioFile::format() {
-	return m_format;
+
+////////////////////////////////////////////////////////////////////////////////
+//	Chunk lookup
+////////////////////////////////////////////////////////////////////////////////
+
+optional<size_t> AudioFile::findChunk(fourcc_t id) const {
+	for (size_t i = 0; i < m_chunks.size(); ++i) {
+		if (m_chunks[i].size() >= 4) {
+			fourcc_t chunkId;
+			memcpy(&chunkId, m_chunks[i].data(), 4);
+			if (chunkId == id)
+				return i;
+		}
+	}
+	return nullopt;
+}
+
+void AudioFile::setChunk(vector<uint8_t> blob) {
+	if (blob.size() < 8)
+		throw runtime_error("Chunk must be at least 8 bytes (ID + SIZE).");
+
+	fourcc_t id;
+	memcpy(&id, blob.data(), 4);
+
+	auto idx = findChunk(id);
+	if (idx.has_value())
+		m_chunks[*idx] = std::move(blob);
+	else
+		m_chunks.push_back(std::move(blob));
 }
 
 } // namespace Diskerror

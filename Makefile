@@ -32,16 +32,16 @@ $(AUDIO_LIB): $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 #$(CLAPP_LIB): $(CLAPP_OBJS)
 #	ar -rc $@ $(CLAPP_OBJS)
 
-$(addprefix $(BUILD_PREF), AudioFile.o): AudioFile.cp AudioFile.h AudioFormat.h Makefile
+$(addprefix $(BUILD_PREF), AudioFile.o): AudioFile.cp AudioFile.h AudioTypes.h Makefile
 	$(CXX) $(CXXFLAGS) -O3 $< -o $@
 
-$(addprefix $(BUILD_PREF), AudioFormat.o): AudioFormat.cp AudioFormat.h BigFloat80.h WAVE.h AIFF.h Makefile
+$(addprefix $(BUILD_PREF), AudioFormat.o): AudioFormat.cp AudioFormat.h AudioFile.h AudioTypes.h BigFloat80.h WAVE.h AIFF.h Makefile
 	$(CXX) $(CXXFLAGS) -O3 $< -o $@
 
 $(addprefix $(BUILD_PREF), AudioSamples.o): AudioSamples.cp AudioSamples.h Makefile
 	$(CXX) $(CXXFLAGS) -O3 $< -o $@
 
-tests/test_audioformat: tests/test_audioformat.cp $(AUDIO_LIB) AudioFile.h AudioFormat.h Makefile
+tests/test_audioformat: tests/test_audioformat.cp $(AUDIO_LIB) AudioFile.h AudioFormat.h AudioTypes.h Makefile
 	$(LINK) $(CXXFLAGS) -O0 -g $< -Llib -ldiskerror_audio -o $@
 
 test: tests/test_audioformat

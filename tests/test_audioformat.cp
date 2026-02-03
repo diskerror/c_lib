@@ -58,12 +58,13 @@ static void testWavePCM16(const filesystem::path& dir) {
 	//	Create and write
 	{
 		AudioFile af(path, AudioType::Wave);
-		auto& fmt = af.format();
+		AudioFormat fmt(af);
 		fmt.setEncoding(SampleEncoding::PCM);
 		fmt.setChannels(1);
 		fmt.setSampleRate(SAMPLE_RATE);
 		fmt.setBitsPerSample(16);
 
+		af.setChunk(fmt.toChunk());
 		af.flush();
 
 		//	Write little-endian int16 samples
@@ -72,19 +73,23 @@ static void testWavePCM16(const filesystem::path& dir) {
 			buf[i] = pcm16[i];
 
 		af.write(reinterpret_cast<const char*>(buf), sizeof(buf));
+
+		fmt.updateFrameCount(af.dataSize());
+		af.setChunk(fmt.toChunk());
 		af.flush();
 	}
 
 	//	Re-open and verify
 	{
 		AudioFile af(path);
+		AudioFormat fmt(af);
 
 		CHECK(af.type() == AudioType::Wave,                       "type == Wave");
-		CHECK(af.format().encoding() == SampleEncoding::PCM,      "encoding == PCM");
-		CHECK(af.format().channels() == 1,                        "channels == 1");
-		CHECK(af.format().bitsPerSample() == 16,                  "bitsPerSample == 16");
-		CHECK(af.format().sampleRate() == SAMPLE_RATE,            "sampleRate == 44100");
-		CHECK(af.format().sampleLittleEndian() == true,           "sampleLittleEndian");
+		CHECK(fmt.encoding() == SampleEncoding::PCM,              "encoding == PCM");
+		CHECK(fmt.channels() == 1,                                "channels == 1");
+		CHECK(fmt.bitsPerSample() == 16,                          "bitsPerSample == 16");
+		CHECK(fmt.sampleRate() == SAMPLE_RATE,                    "sampleRate == 44100");
+		CHECK(af.isLittleEndian() == true,                        "littleEndian");
 		CHECK(af.dataSize() == NUM_FRAMES * 2,                    "dataSize");
 
 		little_int16_t buf[NUM_FRAMES];
@@ -120,13 +125,13 @@ static void testAiffPCM16(const filesystem::path& dir) {
 	//	Create and write
 	{
 		AudioFile af(path, AudioType::Aiff);
-		auto& fmt = af.format();
+		AudioFormat fmt(af);
 		fmt.setEncoding(SampleEncoding::PCM);
 		fmt.setChannels(1);
 		fmt.setSampleRate(SAMPLE_RATE);
 		fmt.setBitsPerSample(16);
-		//	sampleLittleEndian defaults to false — correct for AIFF
 
+		af.setChunk(fmt.toChunk());
 		af.flush();
 
 		//	Write big-endian int16 samples
@@ -135,19 +140,23 @@ static void testAiffPCM16(const filesystem::path& dir) {
 			buf[i] = pcm16[i];
 
 		af.write(reinterpret_cast<const char*>(buf), sizeof(buf));
+
+		fmt.updateFrameCount(af.dataSize());
+		af.setChunk(fmt.toChunk());
 		af.flush();
 	}
 
 	//	Re-open and verify
 	{
 		AudioFile af(path);
+		AudioFormat fmt(af);
 
 		CHECK(af.type() == AudioType::Aiff,                       "type == Aiff");
-		CHECK(af.format().encoding() == SampleEncoding::PCM,      "encoding == PCM");
-		CHECK(af.format().channels() == 1,                        "channels == 1");
-		CHECK(af.format().bitsPerSample() == 16,                  "bitsPerSample == 16");
-		CHECK(af.format().sampleRate() == SAMPLE_RATE,            "sampleRate == 44100");
-		CHECK(af.format().sampleLittleEndian() == false,          "sampleLittleEndian == false");
+		CHECK(fmt.encoding() == SampleEncoding::PCM,              "encoding == PCM");
+		CHECK(fmt.channels() == 1,                                "channels == 1");
+		CHECK(fmt.bitsPerSample() == 16,                          "bitsPerSample == 16");
+		CHECK(fmt.sampleRate() == SAMPLE_RATE,                    "sampleRate == 44100");
+		CHECK(af.isLittleEndian() == false,                       "bigEndian");
 		CHECK(af.dataSize() == NUM_FRAMES * 2,                    "dataSize");
 
 		big_int16_t buf[NUM_FRAMES];
@@ -183,13 +192,13 @@ static void testAifcFloat32(const filesystem::path& dir) {
 	//	Create and write
 	{
 		AudioFile af(path, AudioType::Aiff);
-		auto& fmt = af.format();
+		AudioFormat fmt(af);
 		fmt.setEncoding(SampleEncoding::Float);
 		fmt.setChannels(1);
 		fmt.setSampleRate(SAMPLE_RATE);
 		fmt.setBitsPerSample(32);
-		//	sampleLittleEndian defaults to false — correct for AIFC fl32
 
+		af.setChunk(fmt.toChunk());
 		af.flush();
 
 		//	Write big-endian float32 samples
@@ -203,20 +212,24 @@ static void testAifcFloat32(const filesystem::path& dir) {
 		}
 
 		af.write(reinterpret_cast<const char*>(buf), sizeof(buf));
+
+		fmt.updateFrameCount(af.dataSize());
+		af.setChunk(fmt.toChunk());
 		af.flush();
 	}
 
 	//	Re-open and verify
 	{
 		AudioFile af(path);
+		AudioFormat fmt(af);
 
 		CHECK(af.type() == AudioType::Aiff,                       "type == Aiff");
-		CHECK(af.format().encoding() == SampleEncoding::Float,    "encoding == Float");
-		CHECK(af.format().channels() == 1,                        "channels == 1");
-		CHECK(af.format().bitsPerSample() == 32,                  "bitsPerSample == 32");
-		CHECK(af.format().sampleRate() == SAMPLE_RATE,            "sampleRate == 44100");
-		CHECK(af.format().sampleLittleEndian() == false,          "sampleLittleEndian == false");
-		CHECK(af.format().requiresAifc() == true,                 "requiresAifc");
+		CHECK(fmt.encoding() == SampleEncoding::Float,            "encoding == Float");
+		CHECK(fmt.channels() == 1,                                "channels == 1");
+		CHECK(fmt.bitsPerSample() == 32,                          "bitsPerSample == 32");
+		CHECK(fmt.sampleRate() == SAMPLE_RATE,                    "sampleRate == 44100");
+		CHECK(af.isLittleEndian() == false,                       "bigEndian");
+		CHECK(fmt.requiresAifc() == true,                         "requiresAifc");
 		CHECK(af.dataSize() == NUM_FRAMES * 4,                    "dataSize");
 
 		uint8_t buf[NUM_FRAMES * 4];
