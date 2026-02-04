@@ -45,6 +45,8 @@ Chunks are stored as `shared_ptr<Chunk>` and polymorphically serialized during `
 
 Endianness is format-dependent: WAVE is little-endian, AIFF is big-endian. The code uses `boost::endian` types throughout for type-safe conversions. FourCC codes are always `big_uint32_t`. Binary structures for each format are defined in `WAVE.h` and `AIFF.h`.
 
+`ChunkHead` (in `AudioTypes.h`) is a generic 8-byte chunk header with a union of `little_uint32_t lSize` and `big_uint32_t bSize`, mirroring the container header pattern in `AudioFile::m_header`. It allows users to construct chunks that work with either format. `addChunk()` and `replaceChunk()` derive the total chunk size from this header automatically — no explicit size parameter is needed.
+
 `BigFloat80.h` implements software conversion between 80-bit IEEE 754 extended float (used in AIFF COMM chunks for sample rate) and `double`.
 
 ### Flush model
