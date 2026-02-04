@@ -62,6 +62,7 @@ class AudioFile {
 	//	Internal helpers
 	int64_t allChunksSize() const;
 	void    writeHeaders();
+	static bool isMultiAllowed(fourcc_t id);
 
 public:
 	//	Open existing file. Throws if file does not exist.

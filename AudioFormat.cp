@@ -37,6 +37,17 @@ AudioFormat::AudioFormat(const AudioFile& file) : m_type(file.type()), m_file(&f
 			m_waveFmt.blockAlignment = 2;      // 1 channel * 2 bytes
 			m_waveFmt.bytesPerSecond = 88200;  // 44100 * 2
 		}
+
+		//	Read fact chunk if present (non-PCM WAVE stores sample count here)
+		auto factIdx = file.findChunk('fact');
+		if (factIdx.has_value()) {
+			auto blob = file.chunk(*factIdx);
+			if (blob.size() >= 12) {
+				little_uint32_t sc;
+				memcpy(&sc, blob.data() + 8, 4);
+				m_factSampleCount = sc;
+			}
+		}
 	}
 	else if (m_type == AudioType::Aiff) {
 		auto idx = file.findChunk('COMM');
@@ -164,16 +175,27 @@ AudioFormat AudioFormat::fromAiffComm(span<const uint8_t> blob) {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-//	toChunk — produce the appropriate format chunk blob
+//	toChunk — produce all format-related chunk blobs
 ////////////////////////////////////////////////////////////////////////////////
 
-vector<uint8_t> AudioFormat::toChunk() const {
-	if (m_type == AudioType::Wave)
-		return toWaveFmt();
-	else if (m_type == AudioType::Aiff)
-		return toAiffComm();
-	else
+vector<vector<uint8_t>> AudioFormat::toChunk() const {
+	vector<vector<uint8_t>> chunks;
+
+	if (m_type == AudioType::Wave) {
+		chunks.push_back(toWaveFmt());
+		if (m_encoding != SampleEncoding::PCM)
+			chunks.push_back(toFactChunk());
+	}
+	else if (m_type == AudioType::Aiff) {
+		if (requiresAifc())
+			chunks.push_back(toFverChunk());
+		chunks.push_back(toAiffComm());
+	}
+	else {
 		throw runtime_error("Cannot serialize AudioFormat for unknown audio type.");
+	}
+
+	return chunks;
 }
 
 
@@ -265,6 +287,46 @@ vector<uint8_t> AudioFormat::toAiffComm() const {
 
 
 ////////////////////////////////////////////////////////////////////////////////
+//	toFactChunk — produce 'fact' chunk for non-PCM WAVE
+////////////////////////////////////////////////////////////////////////////////
+
+vector<uint8_t> AudioFormat::toFactChunk() const {
+	vector<uint8_t> out(12);
+
+	fourcc_t factId = 'fact';
+	memcpy(out.data(), &factId, 4);
+
+	little_uint32_t payloadSize = 4;
+	memcpy(out.data() + 4, &payloadSize, 4);
+
+	little_uint32_t sampleCount = numSampleFrames();
+	memcpy(out.data() + 8, &sampleCount, 4);
+
+	return out;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	toFverChunk — produce 'FVER' chunk for AIFC
+////////////////////////////////////////////////////////////////////////////////
+
+vector<uint8_t> AudioFormat::toFverChunk() const {
+	vector<uint8_t> out(12);
+
+	fourcc_t fverId = 'FVER';
+	memcpy(out.data(), &fverId, 4);
+
+	big_uint32_t payloadSize = 4;
+	memcpy(out.data() + 4, &payloadSize, 4);
+
+	big_uint32_t timestamp = 0xA2805140;  // AIFF-C spec creation date
+	memcpy(out.data() + 8, &timestamp, 4);
+
+	return out;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 //	requiresAifc
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -342,7 +404,10 @@ uint16_t AudioFormat::bitsPerSample() const {
 uint32_t AudioFormat::numSampleFrames() const {
 	if (m_type == AudioType::Aiff)
 		return m_aiffComm.numSampleFrames;
-	//	WAVE doesn't store frame count in fmt; calculate from dataSize
+	//	WAVE: use fact chunk sample count if available (compressed formats)
+	if (m_factSampleCount > 0)
+		return m_factSampleCount;
+	//	WAVE: calculate from dataSize for linear formats
 	if (m_file && bytesPerFrame() > 0)
 		return static_cast<uint32_t>(m_file->dataSize() / bytesPerFrame());
 	return 0;
@@ -401,7 +466,8 @@ void AudioFormat::setBitsPerSample(uint16_t b) {
 void AudioFormat::setNumSampleFrames(uint32_t n) {
 	if (m_type == AudioType::Aiff)
 		m_aiffComm.numSampleFrames = n;
-	//	WAVE doesn't store this in fmt
+	else if (m_type == AudioType::Wave)
+		m_factSampleCount = n;
 }
 
 

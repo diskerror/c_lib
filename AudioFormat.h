@@ -29,9 +29,10 @@ enum class SampleEncoding : uint8_t {
 };
 
 class AudioFormat {
-	SampleEncoding   m_encoding = SampleEncoding::PCM;
-	AudioType        m_type     = AudioType::Unknown;
-	const AudioFile* m_file     = nullptr;  // For calculating WAVE frame count from dataSize
+	SampleEncoding   m_encoding          = SampleEncoding::PCM;
+	AudioType        m_type             = AudioType::Unknown;
+	const AudioFile* m_file             = nullptr;  // For calculating WAVE frame count from dataSize
+	uint32_t         m_factSampleCount  = 0;
 	fmt_t            m_waveFmt{};
 	COMM_t           m_aiffComm{};
 
@@ -52,9 +53,10 @@ public:
 
 	// --- Serialization ---
 
-	//	Produce the appropriate format chunk blob based on stored type.
-	//	Returns 'fmt ' blob for Wave, 'COMM' blob for Aiff.
-	[[nodiscard]] std::vector<uint8_t> toChunk() const;
+	//	Produce all format-related chunk blobs for this format.
+	//	PCM WAVE: [fmt]. Non-PCM WAVE: [fmt, fact].
+	//	Plain AIFF: [COMM]. AIFC: [FVER, COMM].
+	[[nodiscard]] std::vector<std::vector<uint8_t>> toChunk() const;
 
 	// --- Query methods ---
 
@@ -96,6 +98,8 @@ private:
 	//	Internal serialization helpers
 	[[nodiscard]] std::vector<uint8_t> toWaveFmt() const;
 	[[nodiscard]] std::vector<uint8_t> toAiffComm() const;
+	[[nodiscard]] std::vector<uint8_t> toFactChunk() const;
+	[[nodiscard]] std::vector<uint8_t> toFverChunk() const;
 };
 
 } // namespace Diskerror

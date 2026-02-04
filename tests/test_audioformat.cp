@@ -64,7 +64,8 @@ static void testWavePCM16(const filesystem::path& dir) {
 		fmt.setSampleRate(SAMPLE_RATE);
 		fmt.setBitsPerSample(16);
 
-		af.setChunk(fmt.toChunk());
+		for (auto& blob : fmt.toChunk())
+			af.setChunk(std::move(blob));
 		af.flush();
 
 		//	Write little-endian int16 samples
@@ -75,7 +76,8 @@ static void testWavePCM16(const filesystem::path& dir) {
 		af.write(reinterpret_cast<const char*>(buf), sizeof(buf));
 
 		fmt.updateFrameCount(af.dataSize());
-		af.setChunk(fmt.toChunk());
+		for (auto& blob : fmt.toChunk())
+			af.setChunk(std::move(blob));
 		af.flush();
 	}
 
@@ -131,7 +133,8 @@ static void testAiffPCM16(const filesystem::path& dir) {
 		fmt.setSampleRate(SAMPLE_RATE);
 		fmt.setBitsPerSample(16);
 
-		af.setChunk(fmt.toChunk());
+		for (auto& blob : fmt.toChunk())
+			af.setChunk(std::move(blob));
 		af.flush();
 
 		//	Write big-endian int16 samples
@@ -142,7 +145,8 @@ static void testAiffPCM16(const filesystem::path& dir) {
 		af.write(reinterpret_cast<const char*>(buf), sizeof(buf));
 
 		fmt.updateFrameCount(af.dataSize());
-		af.setChunk(fmt.toChunk());
+		for (auto& blob : fmt.toChunk())
+			af.setChunk(std::move(blob));
 		af.flush();
 	}
 
@@ -198,7 +202,8 @@ static void testAifcFloat32(const filesystem::path& dir) {
 		fmt.setSampleRate(SAMPLE_RATE);
 		fmt.setBitsPerSample(32);
 
-		af.setChunk(fmt.toChunk());
+		for (auto& blob : fmt.toChunk())
+			af.setChunk(std::move(blob));
 		af.flush();
 
 		//	Write big-endian float32 samples
@@ -214,7 +219,8 @@ static void testAifcFloat32(const filesystem::path& dir) {
 		af.write(reinterpret_cast<const char*>(buf), sizeof(buf));
 
 		fmt.updateFrameCount(af.dataSize());
-		af.setChunk(fmt.toChunk());
+		for (auto& blob : fmt.toChunk())
+			af.setChunk(std::move(blob));
 		af.flush();
 	}
 

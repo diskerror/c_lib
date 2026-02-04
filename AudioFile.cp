@@ -78,7 +78,7 @@ void AudioFile::writeHeaders() {
 	//	Write 12-byte container header
 	m_file.write(reinterpret_cast<const char*>(&m_header), 12);
 
-	//	Build ordered chunk index: ds64 first, then fmt/COMM, then everything else.
+	//	Build ordered chunk index: ds64, FVER, fmt/COMM, fact, then everything else.
 	vector<size_t> order;
 	order.reserve(m_chunks.size());
 	for (size_t i = 0; i < m_chunks.size(); ++i) {
@@ -89,12 +89,23 @@ void AudioFile::writeHeaders() {
 	for (size_t i = 0; i < m_chunks.size(); ++i) {
 		fourcc_t cid;
 		memcpy(&cid, m_chunks[i].data(), 4);
+		if (cid == 'FVER') order.push_back(i);
+	}
+	for (size_t i = 0; i < m_chunks.size(); ++i) {
+		fourcc_t cid;
+		memcpy(&cid, m_chunks[i].data(), 4);
 		if (cid == 'fmt ' || cid == 'COMM') order.push_back(i);
 	}
 	for (size_t i = 0; i < m_chunks.size(); ++i) {
 		fourcc_t cid;
 		memcpy(&cid, m_chunks[i].data(), 4);
-		if (cid != 'ds64' && cid != 'fmt ' && cid != 'COMM') order.push_back(i);
+		if (cid == 'fact') order.push_back(i);
+	}
+	for (size_t i = 0; i < m_chunks.size(); ++i) {
+		fourcc_t cid;
+		memcpy(&cid, m_chunks[i].data(), 4);
+		if (cid != 'ds64' && cid != 'FVER' && cid != 'fmt ' && cid != 'COMM' && cid != 'fact')
+			order.push_back(i);
 	}
 
 	//	Write all non-audio chunks in order
@@ -260,6 +271,14 @@ AudioFile::AudioFile(const filesystem::path& path) : m_path(path) {
 				break;
 			}
 
+			case 'JUNK': case 'PAD ': case 'FREE': {
+				//	Padding/alignment chunks — skip, not stored
+				m_file.seekg(payloadSize, ios_base::cur);
+				if (payloadSize & 1)
+					m_file.seekg(1, ios_base::cur);
+				break;
+			}
+
 			default: {
 				//	Read the full chunk as a blob
 				vector<uint8_t> blob(8 + payloadSize);
@@ -378,8 +397,19 @@ AudioFile::~AudioFile() {
 //	Chunk management
 ////////////////////////////////////////////////////////////////////////////////
 
+bool AudioFile::isMultiAllowed(fourcc_t id) {
+	return id == 'ANNO' || id == 'MIDI' || id == 'APPL' || id == 'SAXL'
+	    || id == 'JUNK' || id == 'PAD ' || id == 'FREE';
+}
+
 size_t AudioFile::addChunk(const void* data) {
 	auto ptr = static_cast<const uint8_t*>(data);
+
+	fourcc_t id;
+	memcpy(&id, ptr, 4);
+
+	if (!isMultiAllowed(id) && findChunk(id).has_value())
+		throw runtime_error("Duplicate singleton chunk.");
 
 	uint32_t payloadSize;
 	if (m_type == AudioType::Wave) {

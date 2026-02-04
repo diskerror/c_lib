@@ -197,14 +197,16 @@ static void testRoundTripWavePCM16(const filesystem::path& dir) {
         fmt.setSampleRate(SAMPLE_RATE);
         fmt.setBitsPerSample(16);
 
-        af.setChunk(fmt.toChunk());
+        for (auto& blob : fmt.toChunk())
+            af.setChunk(std::move(blob));
         af.flush();
 
         AudioSamples samples(&af, &fmt);
         samples.writeAll(writeBuf, false);  // no dither for exact comparison
 
         fmt.updateFrameCount(af.dataSize());
-        af.setChunk(fmt.toChunk());
+        for (auto& blob : fmt.toChunk())
+            af.setChunk(std::move(blob));
         af.flush();
     }
 
@@ -261,14 +263,16 @@ static void testRoundTripWaveFloat32(const filesystem::path& dir) {
         fmt.setSampleRate(SAMPLE_RATE);
         fmt.setBitsPerSample(32);
 
-        af.setChunk(fmt.toChunk());
+        for (auto& blob : fmt.toChunk())
+            af.setChunk(std::move(blob));
         af.flush();
 
         AudioSamples samples(&af, &fmt);
         samples.writeAll(writeBuf);
 
         fmt.updateFrameCount(af.dataSize());
-        af.setChunk(fmt.toChunk());
+        for (auto& blob : fmt.toChunk())
+            af.setChunk(std::move(blob));
         af.flush();
     }
 
