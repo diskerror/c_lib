@@ -41,6 +41,8 @@ All chunks inherit from `Chunk` (virtual `getSize()` and `serialize()`). Key sub
 
 Chunks are stored as `shared_ptr<Chunk>` and polymorphically serialized during `flush()`.
 
+Most chunk types are singletons (at most one per file), but some allow multiples: AIFF `ANNO`, `MIDI`, `APPL`, `SAXL`, and padding chunks (`JUNK`/`PAD `/`FREE`). `findChunk()` and `setChunk()` operate on the first match only — use `addChunk()` for multi-instance chunk types. See `AUDIO_SPECS.md` §2.1 for the full multiplicity table.
+
 ### Format handling
 
 Endianness is format-dependent: WAVE is little-endian, AIFF is big-endian. The code uses `boost::endian` types throughout for type-safe conversions. FourCC codes are always `big_uint32_t`. Binary structures for each format are defined in `WAVE.h` and `AIFF.h`.
