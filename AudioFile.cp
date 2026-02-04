@@ -378,11 +378,22 @@ AudioFile::~AudioFile() {
 //	Chunk management
 ////////////////////////////////////////////////////////////////////////////////
 
-size_t AudioFile::addChunk(const void* data, size_t totalSize) {
-	if (totalSize < 8)
-		throw runtime_error("Chunk must be at least 8 bytes (ID + SIZE).");
-
+size_t AudioFile::addChunk(const void* data) {
 	auto ptr = static_cast<const uint8_t*>(data);
+
+	uint32_t payloadSize;
+	if (m_type == AudioType::Wave) {
+		little_uint32_t ls;
+		memcpy(&ls, ptr + 4, 4);
+		payloadSize = ls;
+	}
+	else {
+		big_uint32_t bs;
+		memcpy(&bs, ptr + 4, 4);
+		payloadSize = bs;
+	}
+
+	size_t totalSize = payloadSize + 8;
 	m_chunks.emplace_back(ptr, ptr + totalSize);
 	return m_chunks.size() - 1;
 }
@@ -395,11 +406,22 @@ span<const uint8_t> AudioFile::chunk(size_t index) const {
 	return m_chunks.at(index);
 }
 
-void AudioFile::replaceChunk(size_t index, const void* data, size_t totalSize) {
-	if (totalSize < 8)
-		throw runtime_error("Chunk must be at least 8 bytes (ID + SIZE).");
-
+void AudioFile::replaceChunk(size_t index, const void* data) {
 	auto ptr = static_cast<const uint8_t*>(data);
+
+	uint32_t payloadSize;
+	if (m_type == AudioType::Wave) {
+		little_uint32_t ls;
+		memcpy(&ls, ptr + 4, 4);
+		payloadSize = ls;
+	}
+	else {
+		big_uint32_t bs;
+		memcpy(&bs, ptr + 4, 4);
+		payloadSize = bs;
+	}
+
+	size_t totalSize = payloadSize + 8;
 	m_chunks.at(index).assign(ptr, ptr + totalSize);
 }
 

@@ -84,9 +84,10 @@ public:
 
 	// --- Chunk management ---
 
-	//	Add a fully-formed chunk. AudioFile copies the bytes.
+	//	Add a fully-formed chunk. AudioFile reads the size from bytes 4-7
+	//	(endianness determined by file type) and copies ID + SIZE + payload.
 	//	Returns the index of the inserted chunk.
-	size_t addChunk(const void* data, size_t totalSize);
+	size_t addChunk(const void* data);
 
 	//	Number of non-audio chunks.
 	[[nodiscard]] size_t chunkCount() const;
@@ -95,7 +96,7 @@ public:
 	[[nodiscard]] std::span<const uint8_t> chunk(size_t index) const;
 
 	//	Replace the chunk at index with new data.
-	void replaceChunk(size_t index, const void* data, size_t totalSize);
+	void replaceChunk(size_t index, const void* data);
 
 	//	Remove the chunk at index.
 	void deleteChunk(size_t index);

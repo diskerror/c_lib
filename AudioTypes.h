@@ -22,6 +22,17 @@ enum class AudioType : uint8_t {
 	Aiff
 };
 
+//	Generic chunk header: [ID 4][SIZE 4]
+//	SIZE is little-endian for WAVE, big-endian for AIFF.
+//	Use lSize for WAVE files, bSize for AIFF files.
+struct ChunkHead {
+	fourcc_t id{0};
+	union {
+		little_uint32_t lSize;
+		big_uint32_t    bSize;
+	};
+};
+
 } // namespace Diskerror
 
 #endif // DISKERROR_AUDIOTYPES_H
