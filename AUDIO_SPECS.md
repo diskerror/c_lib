@@ -47,6 +47,47 @@ of the signed specification when writing for strict compliance.
 | **Format Ver**    | N/A             | `FVER`            | Required for AIFF-C.                                                                  |
 | **Sound Accel**   | N/A             | `SAXL`            | AIFF-C specific.                                                                      |
 
+### 2.1. Chunk Multiplicity
+
+Per the AIFF 1.3, AIFF-C, and WAVE specifications, some chunk types are singletons (at most one per file) while
+others may appear multiple times.
+
+**WAVE Chunks:**
+
+| Chunk ID      | Multiplicity                 | Spec Language                                             |
+|:--------------|:-----------------------------|:----------------------------------------------------------|
+| `fmt `        | Exactly 1 (Required)         | "One, and only one, Format Chunk is required."            |
+| `data`        | Exactly 1 (Required)         | "One, and only one, Data Chunk may appear."               |
+| `ds64`        | Exactly 1 (RF64 only)        | "A mandatory ds64 chunk...has to be the first chunk."     |
+| `fact`        | 0 or 1 (Required non-PCM)    | "Required for all new WAVE formats" (except PCM).         |
+| `cue `        | 0 or 1                       | "No more than one Cue chunk can appear."                  |
+| `plst`        | 0 or 1                       | Singleton per spec.                                       |
+| `inst`        | 0 or 1                       | "No more than 1 Instrument Chunk can appear."             |
+| `smpl`        | 0 or 1 (ambiguous)           | Spec does not explicitly limit to one.                    |
+| `bext`        | 0 or 1                       | Singleton per BWF spec.                                   |
+| `LIST`        | 0 or 1                       | Singleton per spec.                                       |
+| `JUNK`/`PAD ` | 0 or more                   | Padding; multiple allowed.                                |
+
+**AIFF / AIFF-C Chunks:**
+
+| Chunk ID | Multiplicity                     | Spec Language                                            |
+|:---------|:---------------------------------|:---------------------------------------------------------|
+| `COMM`   | Exactly 1 (Required)             | "One and only one Common Chunk is required."             |
+| `SSND`   | 0 or 1 (Required if samples > 0) | "A maximum of one Sound Data Chunk can appear."          |
+| `FVER`   | Exactly 1 (AIFC only)            | "One and only one Format Version Chunk must appear."     |
+| `MARK`   | 0 or 1                           | "No more than one Marker Chunk can appear."              |
+| `INST`   | 0 or 1                           | "No more than one Instrument Chunk can appear."          |
+| `COMT`   | 0 or 1                           | "No more than one Comments Chunk may appear."            |
+| `NAME`   | 0 or 1                           | "No more than one Name Chunk may exist."                 |
+| `AUTH`   | 0 or 1                           | "No more than one Author Chunk may exist."               |
+| `(c) `   | 0 or 1                           | "No more than one Copyright Chunk may exist."            |
+| `AESD`   | 0 or 1                           | "No more than one Audio Recording Chunk may appear."     |
+| `ANNO`   | **0 or more**                    | "Many Annotation Chunks may exist."                      |
+| `MIDI`   | **0 or more**                    | "Any number of MIDI Data Chunks may exist."              |
+| `APPL`   | **0 or more**                    | "Any number of Application Specific Chunks may exist."   |
+| `SAXL`   | **0 or more** (AIFC only)        | "Any number of Saxel Chunks may appear."                 |
+| `PAD `/`FREE` | 0 or more                   | Padding; multiple allowed.                               |
+
 ## 3. High-Level Structure
 
 ### 3.1. WAVE (Standard < 4GB)
