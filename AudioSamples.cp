@@ -3,256 +3,400 @@
 //
 
 #include "AudioSamples.h"
+#include "AudioFile.h"
+#include "AudioFormat.h"
+#include "DiskerrorExceptions.h"
 
-#include <boost/cstdfloat.hpp>
-#include <boost/endian.hpp>
-#include <functional>
-#include <iostream>
+#include <boost/endian/arithmetic.hpp>
+#include <boost/endian/conversion.hpp>
+
+#include <algorithm>
+#include <cmath>
 #include <random>
-#include <stdexcept>
-#include <vector>
 
 namespace Diskerror {
 
-using namespace std;
-using namespace boost;
 using namespace boost::endian;
 
+// =============================================================================
+// Construction
+// =============================================================================
 
-AudioSamples::AudioSamples(const filesystem::path& aFile) : AudioFile(aFile) {}
-
-void AudioSamples::assertDataFormat() const {
-	if (!this->is_pcm() && !this->is_ieee()) {
-		throw runtime_error(
-			"ERROR: This method only handles PCM (integer) or IEEE (32-bit float) data in audio files.");
-	}
-
-	if (this->is_pcm() && this->getBitsPerSample() >= 32) {
-		throw out_of_range(
-			"ERROR: Cannot convert 32-bit integer (PCM) data to 32-bit float without loss of resolution.");
-	}
-
-	if (this->getBitsPerSample() > 32) {
-		throw out_of_range("ERROR: Cannot read data without loss of resolution.");
-	}
+AudioSamples::AudioSamples(AudioFile* file, const AudioFormat* format)
+    : file_(file), format_(format)
+{
+    if (!file_ || !format_) {
+        throw UsageError("AudioSamples requires non-null AudioFile and AudioFormat pointers.");
+    }
 }
 
+// =============================================================================
+// Public API
+// =============================================================================
 
-
-//	Maximum value storable == 2^(nBits-1) - 1
-float64_t AudioSamples::getSampleMaxMagnitude() const {
-	if (this->is_ieee())
-		return 1.0;
-
-	// return pow(2.0, this->audioFile->getBitsPerSample() - 1) - 1;
-
-	switch (static_cast<int16_t>(ceil(this->getBitsPerSample() / 8.0))) {
-		case 1:
-			return 127.0;
-
-		case 2:
-			return 32767.0;
-
-		case 3:
-			return 8388607.0;
-
-		case 4:
-			return 2147483648.0;
-	}
-
-	throw runtime_error("Bad number of bits per sample	.");
-
-	// return numeric_limits<float64_t>::quiet_NaN();
+AudioBuffer AudioSamples::readAll() {
+    return readRange(0, format_->numSampleFrames());
 }
 
+AudioBuffer AudioSamples::readRange(uint64_t startFrame, uint64_t frameCount) {
+    // Validate format
+    const auto encoding = format_->encoding();
+    const auto bits = format_->bitsPerSample();
 
-float32_t AudioSamples::Dither() {
-	static std::random_device                        rd;
-	static std::mt19937                              gen(rd());
-	static std::uniform_real_distribution<float32_t> low(-1, 0);
-	static std::uniform_real_distribution<float32_t> hi(0, 1);
+    if (encoding != SampleEncoding::PCM && encoding != SampleEncoding::Float) {
+        throw FormatError("AudioSamples only handles PCM or Float encoding.");
+    }
 
-	return low(gen) + hi(gen);
+    if (encoding == SampleEncoding::Float && bits == 64) {
+        throw FormatError("Reading 64-bit float: lossy conversion to 32-bit float.");
+    }
+
+    if (encoding == SampleEncoding::PCM && bits > 32) {
+        throw FormatError("PCM bit depth > 32 not supported.");
+    }
+
+    // Read raw bytes
+    std::vector<uint8_t> rawData;
+    readRawFrames(startFrame, frameCount, rawData);
+
+    // Convert to normalized float buffer
+    return rawToFloat(rawData, frameCount);
 }
 
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/**
- * ReadSamples
- * This method converts 8-, 16-, 24-bit integers (PCM), and returns 32-bit machine native floats (IEEE).
- */
-void AudioSamples::ReadSamples() {
-	this->assertDataFormat();
-
-	if (this->getBitsPerSample() > 32 ||
-		(this->is_pcm() && this->getBitsPerSample() >= 32)
-	) {
-		throw runtime_error("ERROR: Cannot read data without loss of resolution.");
-	}
-
-	auto dataBlock       = this->ReadAllData();
-	auto tempLittleFloat = reinterpret_cast<little_float32_t*>(dataBlock.data());
-	auto tempBigFloat    = reinterpret_cast<big_float32_t*>(dataBlock.data());
-
-	uint64_t      numSamples = this->getNumFrames() * this->getNumChannels();
-	uint_fast64_t si         = 0; //	Index variable for samples.
-
-	this->resize(numSamples);
-	this->shrink_to_fit();
-
-	if (this->getBitsPerSample() == 8) {
-		for (; si < numSamples; ++si) {
-			(*this)[si] = static_cast<float32_t>(dataBlock[si] - 127);
-		}
-	}
-	else {
-		unsigned char* dPtr = dataBlock.data();
-
-		if (this->is_littleEndian()) {
-			switch (this->getBitsPerSample()) {
-				case 16:
-					for (auto& elem : *this) {
-						elem = static_cast<float32_t>(load_little_s16(dPtr));
-						dPtr += 2;
-					}
-					break;
-
-				case 24:
-					for (auto& elem : *this) {
-						elem = static_cast<float32_t>(load_little_s24(dPtr));
-						dPtr += 3;
-					}
-					break;
-
-				//  Data is 32-bit float.
-				case 32:
-					for (; si < numSamples; ++si) {
-						(*this)[si] = static_cast<float32_t>(tempLittleFloat[si]);
-					}
-					break;
-
-				default:
-					throw runtime_error("Should not get here.");
-			}
-		}
-		//	is big endian
-		else {
-			switch (this->getBitsPerSample()) {
-				case 16:
-					for (auto& elem : *this) {
-						elem = static_cast<float32_t>(load_big_s16(dPtr));
-						dPtr += 2;
-					}
-					break;
-
-				case 24:
-					for (auto& elem : *this) {
-						elem = static_cast<float32_t>(load_big_s24(dPtr));
-						dPtr += 3;
-					}
-					break;
-
-				//  Data is 32-bit float.
-				case 32:
-					for (; si < numSamples; ++si) {
-						(*this)[si] = static_cast<float32_t>(tempBigFloat[si]);
-					}
-					break;
-
-				default:
-					throw runtime_error("Should not get here.");
-			}
-		}
-	}
+void AudioSamples::writeAll(const AudioBuffer& buf, bool dither) {
+    writeRange(buf, 0, dither);
 }
 
+void AudioSamples::writeRange(const AudioBuffer& buf, uint64_t startFrame, bool dither) {
+    if (buf.empty()) return;
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-void AudioSamples::Normalize() { this->normalize_mag(getSampleMaxMagnitude()); }
+    const auto channels = format_->channels();
+    if (buf.size() != channels) {
+        throw UsageError("AudioBuffer channel count does not match format.");
+    }
 
+    // Validate all channels have same length
+    const auto frameCount = buf[0].size();
+    for (size_t ch = 1; ch < channels; ++ch) {
+        if (buf[ch].size() != frameCount) {
+            throw UsageError("AudioBuffer channels have inconsistent frame counts.");
+        }
+    }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-//	Assumes data will be the same size as the buffer that was read.
-void AudioSamples::WriteSamples(const bool do_dither) {
-	this->assertDataFormat();
+    // Convert to raw bytes
+    std::vector<uint8_t> rawData = floatToRaw(buf, dither);
 
-	vector<unsigned char> dataBlock(this->getDataSize());
-	auto tempLittleFloat = reinterpret_cast<little_float32_t*>(dataBlock.data());
-	auto tempBigFloat    = reinterpret_cast<big_float32_t*>(dataBlock.data());
-
-	uint64_t      numSamples = this->getNumFrames() * this->getNumChannels();
-	uint_fast64_t si         = 0; //	Index variable for samples.
-
-	//	Decide whether to add dither.
-	std::function getDither = do_dither ?
-								  []()-> float32_t { return Dither(); } :
-								  []()-> float32_t { return 0.0; };
-
-	if (this->getBitsPerSample() == 8) {
-		for (; si < numSamples; ++si) {
-			dataBlock[si] = static_cast<uint8_t>((*this)[si] + getDither()) + 127;
-		}
-	}
-	else {
-		unsigned char* dPtr = dataBlock.data();
-
-		if (this->is_littleEndian()) {
-			switch (this->getBitsPerSample()) {
-				case 16:
-					for (auto& elem : *this) {
-						store_little_s16(dPtr, static_cast<int16_t>(elem + getDither()));
-						dPtr += 2;
-					}
-					break;
-
-				case 24:
-					for (auto& elem : *this) {
-						store_little_s24(dPtr, static_cast<int32_t>(elem + getDither()));
-						dPtr += 3;
-					}
-					break;
-
-				case 32:
-					for (; si < numSamples; ++si) {
-						tempLittleFloat[si] = static_cast<little_float32_t>((*this)[si]); //	No dither used with floating point data.
-					}
-					break;
-
-				default:
-					throw runtime_error("Should not get here.");
-			}
-		}
-		//	is big endian
-		else {
-			switch (this->getBitsPerSample()) {
-				case 16:
-					for (auto& elem : *this) {
-						store_big_s16(dPtr, static_cast<int16_t>(elem + getDither()));
-						dPtr += 2;
-					}
-					break;
-
-				case 24:
-					for (auto& elem : *this) {
-						store_big_s24(dPtr, static_cast<int32_t>(elem + getDither()));
-						dPtr += 3;
-					}
-					break;
-
-				case 32:
-					for (; si < numSamples; ++si) {
-						tempBigFloat[si] = static_cast<big_float32_t>((*this)[si]); //	No dither used with floating point data.
-					}
-					break;
-
-				default:
-					throw runtime_error("Should not get here.");
-			}
-		}
-	}
-
-	this->WriteAllData(dataBlock);
+    // Write raw bytes
+    writeRawFrames(startFrame, rawData);
 }
 
-} //  namespace Diskerror
+float32_t AudioSamples::dither() {
+    // Thread-local for thread safety
+    thread_local std::random_device rd;
+    thread_local std::mt19937 gen(rd());
+    thread_local std::uniform_real_distribution<float32_t> dist(-0.5f, 0.5f);
+
+    // Triangular PDF: sum of two uniform distributions
+    return dist(gen) + dist(gen);
+}
+
+void AudioSamples::normalize(AudioBuffer& buf, float32_t target) {
+    if (buf.empty()) return;
+
+    // Find maximum magnitude across all channels
+    float32_t maxMag = 0.0f;
+    for (const auto& channel : buf) {
+        float32_t chMax = channel.max_mag();
+        if (chMax > maxMag) {
+            maxMag = chMax;
+        }
+    }
+
+    // Scale all channels uniformly
+    if (maxMag > 0.0f) {
+        float32_t scale = target / maxMag;
+        for (auto& channel : buf) {
+            channel *= scale;
+        }
+    }
+}
+
+// =============================================================================
+// Internal Helpers
+// =============================================================================
+
+double AudioSamples::getNormalizationDivisor() const {
+    const auto encoding = format_->encoding();
+    const auto bits = format_->bitsPerSample();
+
+    if (encoding == SampleEncoding::Float) {
+        return 1.0;  // Float is already normalized
+    }
+
+    // PCM: 2^(bits-1)
+    switch (bits) {
+        case 8:  return 128.0;
+        case 16: return 32768.0;
+        case 24: return 8388608.0;
+        case 32: return 2147483648.0;
+        default:
+            throw FormatError("Unsupported PCM bit depth: " + std::to_string(bits));
+    }
+}
+
+bool AudioSamples::is8BitUnsigned() const {
+    // WAVE 8-bit PCM is unsigned (0-255), AIFF 8-bit is signed (-128 to 127)
+    return format_->bitsPerSample() == 8 &&
+           format_->encoding() == SampleEncoding::PCM &&
+           file_->type() == AudioType::Wave;
+}
+
+void AudioSamples::readRawFrames(uint64_t startFrame, uint64_t frameCount,
+                                  std::vector<uint8_t>& rawData) const {
+    const auto bytesPerFrame = format_->bytesPerFrame();
+    const auto byteOffset = static_cast<std::streamoff>(startFrame * bytesPerFrame);
+    const auto byteCount = frameCount * bytesPerFrame;
+
+    rawData.resize(byteCount);
+
+    // Seek and read - need non-const file for I/O
+    auto* mutableFile = const_cast<AudioFile*>(file_);
+    mutableFile->seekg(byteOffset);
+    mutableFile->read(reinterpret_cast<char*>(rawData.data()),
+                      static_cast<std::streamsize>(byteCount));
+}
+
+void AudioSamples::writeRawFrames(uint64_t startFrame,
+                                   const std::vector<uint8_t>& rawData) {
+    const auto bytesPerFrame = format_->bytesPerFrame();
+    const auto byteOffset = static_cast<std::streamoff>(startFrame * bytesPerFrame);
+
+    file_->seekp(byteOffset);
+    file_->write(reinterpret_cast<const char*>(rawData.data()),
+                 static_cast<std::streamsize>(rawData.size()));
+}
+
+// =============================================================================
+// Raw <-> Float Conversion
+// =============================================================================
+
+AudioBuffer AudioSamples::rawToFloat(const std::vector<uint8_t>& raw,
+                                      uint64_t frameCount) const {
+    const auto channels = format_->channels();
+    const auto bits = format_->bitsPerSample();
+    const auto encoding = format_->encoding();
+    const bool isLittle = file_->isLittleEndian();
+    const double divisor = getNormalizationDivisor();
+    const bool unsigned8 = is8BitUnsigned();
+
+    // Allocate deinterleaved buffer
+    AudioBuffer buf(channels);
+    for (auto& ch : buf) {
+        ch.resize(frameCount);
+    }
+
+    const uint8_t* ptr = raw.data();
+
+    // Process frame by frame, deinterleaving
+    for (uint64_t frame = 0; frame < frameCount; ++frame) {
+        for (uint16_t ch = 0; ch < channels; ++ch) {
+            double sample = 0.0;
+
+            if (encoding == SampleEncoding::Float) {
+                if (bits == 32) {
+                    if (isLittle) {
+                        auto val = *reinterpret_cast<const little_float32_t*>(ptr);
+                        sample = static_cast<double>(val);
+                    } else {
+                        auto val = *reinterpret_cast<const big_float32_t*>(ptr);
+                        sample = static_cast<double>(val);
+                    }
+                    ptr += 4;
+                } else if (bits == 64) {
+                    // Should have thrown earlier, but handle gracefully
+                    if (isLittle) {
+                        auto val = *reinterpret_cast<const little_float64_t*>(ptr);
+                        sample = static_cast<double>(val);
+                    } else {
+                        auto val = *reinterpret_cast<const big_float64_t*>(ptr);
+                        sample = static_cast<double>(val);
+                    }
+                    ptr += 8;
+                }
+            } else {
+                // PCM
+                switch (bits) {
+                    case 8:
+                        if (unsigned8) {
+                            // WAVE: unsigned, center at 128
+                            sample = (static_cast<double>(*ptr) - 128.0) / divisor;
+                        } else {
+                            // AIFF: signed
+                            sample = static_cast<double>(static_cast<int8_t>(*ptr)) / divisor;
+                        }
+                        ptr += 1;
+                        break;
+
+                    case 16:
+                        if (isLittle) {
+                            auto val = *reinterpret_cast<const little_int16_t*>(ptr);
+                            sample = static_cast<double>(val) / divisor;
+                        } else {
+                            auto val = *reinterpret_cast<const big_int16_t*>(ptr);
+                            sample = static_cast<double>(val) / divisor;
+                        }
+                        ptr += 2;
+                        break;
+
+                    case 24:
+                        if (isLittle) {
+                            int32_t val = load_little_s24(ptr);
+                            sample = static_cast<double>(val) / divisor;
+                        } else {
+                            int32_t val = load_big_s24(ptr);
+                            sample = static_cast<double>(val) / divisor;
+                        }
+                        ptr += 3;
+                        break;
+
+                    case 32:
+                        if (isLittle) {
+                            auto val = *reinterpret_cast<const little_int32_t*>(ptr);
+                            sample = static_cast<double>(val) / divisor;
+                        } else {
+                            auto val = *reinterpret_cast<const big_int32_t*>(ptr);
+                            sample = static_cast<double>(val) / divisor;
+                        }
+                        ptr += 4;
+                        break;
+
+                    default:
+                        throw FormatError("Unsupported bit depth in rawToFloat.");
+                }
+            }
+
+            buf[ch][frame] = static_cast<float32_t>(sample);
+        }
+    }
+
+    return buf;
+}
+
+std::vector<uint8_t> AudioSamples::floatToRaw(const AudioBuffer& buf,
+                                               bool doDither) const {
+    const auto channels = format_->channels();
+    const auto bits = format_->bitsPerSample();
+    const auto encoding = format_->encoding();
+    const bool isLittle = file_->isLittleEndian();
+    const double multiplier = getNormalizationDivisor();
+    const bool unsigned8 = is8BitUnsigned();
+    const auto frameCount = buf[0].size();
+
+    // Calculate output size
+    const auto bytesPerFrame = format_->bytesPerFrame();
+    std::vector<uint8_t> raw(frameCount * bytesPerFrame);
+    uint8_t* ptr = raw.data();
+
+    // Only apply dither to integer formats
+    const bool applyDither = doDither && (encoding == SampleEncoding::PCM);
+
+    // Process frame by frame, interleaving
+    for (size_t frame = 0; frame < frameCount; ++frame) {
+        for (uint16_t ch = 0; ch < channels; ++ch) {
+            double sample = static_cast<double>(buf[ch][frame]);
+
+            if (encoding == SampleEncoding::Float) {
+                // Clip to [-1.0, 1.0] for consistency
+                sample = std::clamp(sample, -1.0, 1.0);
+
+                if (bits == 32) {
+                    auto val = static_cast<float32_t>(sample);
+                    if (isLittle) {
+                        *reinterpret_cast<little_float32_t*>(ptr) = val;
+                    } else {
+                        *reinterpret_cast<big_float32_t*>(ptr) = val;
+                    }
+                    ptr += 4;
+                } else if (bits == 64) {
+                    if (isLittle) {
+                        *reinterpret_cast<little_float64_t*>(ptr) = sample;
+                    } else {
+                        *reinterpret_cast<big_float64_t*>(ptr) = sample;
+                    }
+                    ptr += 8;
+                }
+            } else {
+                // PCM: scale, dither, clip, round
+                double scaled = sample * multiplier;
+
+                if (applyDither) {
+                    scaled += static_cast<double>(dither());
+                }
+
+                switch (bits) {
+                    case 8: {
+                        // Clip to [-128, 127] range before offset
+                        scaled = std::clamp(scaled, -128.0, 127.0);
+                        int32_t rounded = static_cast<int32_t>(std::round(scaled));
+
+                        if (unsigned8) {
+                            // WAVE: add 128 offset for unsigned
+                            *ptr = static_cast<uint8_t>(rounded + 128);
+                        } else {
+                            // AIFF: signed
+                            *ptr = static_cast<uint8_t>(static_cast<int8_t>(rounded));
+                        }
+                        ptr += 1;
+                        break;
+                    }
+
+                    case 16: {
+                        scaled = std::clamp(scaled, -32768.0, 32767.0);
+                        auto rounded = static_cast<int16_t>(std::round(scaled));
+
+                        if (isLittle) {
+                            *reinterpret_cast<little_int16_t*>(ptr) = rounded;
+                        } else {
+                            *reinterpret_cast<big_int16_t*>(ptr) = rounded;
+                        }
+                        ptr += 2;
+                        break;
+                    }
+
+                    case 24: {
+                        scaled = std::clamp(scaled, -8388608.0, 8388607.0);
+                        auto rounded = static_cast<int32_t>(std::round(scaled));
+
+                        if (isLittle) {
+                            store_little_s24(ptr, rounded);
+                        } else {
+                            store_big_s24(ptr, rounded);
+                        }
+                        ptr += 3;
+                        break;
+                    }
+
+                    case 32: {
+                        scaled = std::clamp(scaled, -2147483648.0, 2147483647.0);
+                        auto rounded = static_cast<int32_t>(std::round(scaled));
+
+                        if (isLittle) {
+                            *reinterpret_cast<little_int32_t*>(ptr) = rounded;
+                        } else {
+                            *reinterpret_cast<big_int32_t*>(ptr) = rounded;
+                        }
+                        ptr += 4;
+                        break;
+                    }
+
+                    default:
+                        throw FormatError("Unsupported bit depth in floatToRaw.");
+                }
+            }
+        }
+    }
+
+    return raw;
+}
+
+} // namespace Diskerror
