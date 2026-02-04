@@ -10,8 +10,8 @@
 -   **Structure:** Source files are in the root. Object files go to `build/`. Compiled libraries go to `lib/`.
 
 ## Key Components
--   **AudioFile:** Chunk-based I/O for WAVE and AIFF audio files.
--   **AudioFormat:** Format-agnostic access to sample rate, channels, bit depth, and encoding.
+-   **AudioFile:** Chunk-based I/O for WAVE and AIFF audio files. Stores metadata chunks as opaque byte blobs; audio data stays on disk. Enforces singleton chunk rules and writes chunks in spec-required order.
+-   **AudioFormat:** Format-agnostic access to sample rate, channels, bit depth, and encoding. Produces all required format chunks (`fmt`/`fact` for WAVE, `FVER`/`COMM` for AIFC) via `toChunk()`.
 -   **AudioSamples:** Reads/writes audio data as normalized float32, with automatic deinterleaving.
 -   **VectorMath:** SIMD-friendly numeric vector with reduction operations for DSP.
 -   **WindowedSinc:** Windowed sinc filter kernel generator for resampling and filtering.
