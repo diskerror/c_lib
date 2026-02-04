@@ -10,8 +10,12 @@
 -   **Structure:** Source files are in the root. Object files go to `build/`. Compiled libraries go to `lib/`.
 
 ## Key Components
--   **AudioFile:** Handling of WAVE and AIFF audio file formats.
--   **BigFloat80:** Software implimented conversion of stored big-endian 80-bit float.
+-   **AudioFile:** Chunk-based I/O for WAVE and AIFF audio files.
+-   **AudioFormat:** Format-agnostic access to sample rate, channels, bit depth, and encoding.
+-   **AudioSamples:** Reads/writes audio data as normalized float32, with automatic deinterleaving.
+-   **VectorMath:** SIMD-friendly numeric vector with reduction operations for DSP.
+-   **WindowedSinc:** Windowed sinc filter kernel generator for resampling and filtering.
+-   **BigFloat80:** Software conversion of big-endian 80-bit float (AIFF sample rate).
 -   **clapp:** "Command Line APPlication" - A base class for building CLI tools.
 
 ## Building
@@ -27,4 +31,3 @@ make
 -   **Source Extension:** `.cp` is used for C++ source files (instead of `.cpp`).
 -   **Header Extension:** `.h`
 -   **Namespace:** Code is contained within the `Diskerror` namespace.
-``
