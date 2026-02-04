@@ -19,7 +19,7 @@ using namespace std;
 //	Constructor from AudioFile
 ////////////////////////////////////////////////////////////////////////////////
 
-AudioFormat::AudioFormat(const AudioFile& file) : m_type(file.type()) {
+AudioFormat::AudioFormat(const AudioFile& file) : m_type(file.type()), m_file(&file) {
 	if (m_type == AudioType::Wave) {
 		auto idx = file.findChunk('fmt ');
 		if (idx.has_value()) {
@@ -342,7 +342,9 @@ uint16_t AudioFormat::bitsPerSample() const {
 uint32_t AudioFormat::numSampleFrames() const {
 	if (m_type == AudioType::Aiff)
 		return m_aiffComm.numSampleFrames;
-	//	WAVE doesn't store frame count in fmt; derive from data size externally
+	//	WAVE doesn't store frame count in fmt; calculate from dataSize
+	if (m_file && bytesPerFrame() > 0)
+		return static_cast<uint32_t>(m_file->dataSize() / bytesPerFrame());
 	return 0;
 }
 

@@ -29,10 +29,11 @@ enum class SampleEncoding : uint8_t {
 };
 
 class AudioFormat {
-	SampleEncoding m_encoding = SampleEncoding::PCM;
-	AudioType      m_type     = AudioType::Unknown;
-	fmt_t          m_waveFmt{};
-	COMM_t         m_aiffComm{};
+	SampleEncoding   m_encoding = SampleEncoding::PCM;
+	AudioType        m_type     = AudioType::Unknown;
+	const AudioFile* m_file     = nullptr;  // For calculating WAVE frame count from dataSize
+	fmt_t            m_waveFmt{};
+	COMM_t           m_aiffComm{};
 
 public:
 	AudioFormat() = default;
