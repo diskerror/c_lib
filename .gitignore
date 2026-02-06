@@ -7,6 +7,8 @@
 *-orig
 .gemini
 GEMINI*
+CLAUDE*
+.claude/
 
 # Test files
 *.tmp
@@ -15,4 +17,4 @@ GEMINI*
 *.aiff
 *.dSYM/
 tests/test_audioformat
-
+tests/test_audiosamples
