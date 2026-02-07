@@ -2,10 +2,11 @@
 SHELL = /bin/bash
 
 #	Compiler
-#	On MacOS g++: aliased to /opt/local/bin/g++-mp-15
-CXX = g++ -c -std=c++23 -fPIC -Wall -Wextra -Winvalid-pch -Wno-macro-redefined
+CXX = clang++ -c -std=c++23 -fPIC -Wall -Wextra -Winvalid-pch
 
-CXXFLAGS = -Wno-multichar -I/opt/local/libexec/gcc15/libc++/include -I/opt/local/libexec/boost/1.88/include
+CXXFLAGS = -Wno-multichar \
+	-I/opt/local/libexec/gcc15/libc++/include \
+	-I/opt/local/libexec/boost/1.88/include
 
 BUILD_PREF = build/
 LIB_PREF = lib/libdiskerror_
@@ -14,22 +15,14 @@ AUDIO_LIB = $(addprefix $(LIB_PREF), audio.a)
 AUDIO = AudioFile AudioFormat AudioSamples
 AUDIO_OBJS = $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 
-#CLAPP_LIB = $(addprefix $(LIB_PREF), clapp.a)
-#CLAPP = clapp clappFiles FileList
-#CLAPP_OBJS = $(addprefix $(BUILD_PREF), $(addsuffix .o, $(CLAPP)))
-
-LINK = g++ -std=c++23 -Wall -Wextra -Wno-macro-redefined
+LINK = clang++ -std=c++23 -Wall -Wextra -Wno-macro-redefined
 
 .PHONY: clean all test
 
-#all: $(AUDIO_LIB) $(CLAPP_LIB)
 all: $(AUDIO_LIB)
 
 $(AUDIO_LIB): $(addprefix $(BUILD_PREF), $(addsuffix .o, $(AUDIO)))
 	ar -rc $@ $^
-
-#$(CLAPP_LIB): $(CLAPP_OBJS)
-#	ar -rc $@ $(CLAPP_OBJS)
 
 $(addprefix $(BUILD_PREF), AudioFile.o): AudioFile.cp AudioFile.h AudioTypes.h Makefile
 	$(CXX) $(CXXFLAGS) -O3 $< -o $@
@@ -46,15 +39,6 @@ tests/test_audioformat: tests/test_audioformat.cp $(AUDIO_LIB) AudioFile.h Audio
 test: tests/test_audioformat
 	./tests/test_audioformat
 
-#$(addprefix $(BUILD_PREF), clapp.o): clapp.cp clapp.h Makefile
-#	$(CXX)-O3 $< -o $@
 
-#$(addprefix $(BUILD_PREF), clappFiles.o): clappFiles.cp clappFiles.h Makefile
-#	$(CXX) -O3 $< -o $@
-
-#$(addprefix $(BUILD_PREF), FileList.o): FileList.cp FileList.h Makefile
-#	$(CXX) -O3 $< -o $@
-
-
-#clean:
-#	rm -f $(addsuffix .a, $(SRCS))
+clean:
+	rm -f ./build/*.o ./lib/*.a
