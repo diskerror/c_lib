@@ -47,9 +47,10 @@ AudioBuffer AudioSamples::readRange(uint64_t startFrame, uint64_t frameCount) {
         throw FormatError("AudioSamples only handles PCM or Float encoding.");
     }
 
-    if (encoding == SampleEncoding::Float && bits == 64) {
-        throw FormatError("Reading 64-bit float: lossy conversion to 32-bit float.");
-    }
+	//	Silently down convert 64- to 32-bit.
+//    if (encoding == SampleEncoding::Float && bits == 64) {
+//        throw FormatError("Reading 64-bit float: lossy conversion to 32-bit float.");
+//    }
 
     if (encoding == SampleEncoding::PCM && bits > 32) {
         throw FormatError("PCM bit depth > 32 not supported.");
