@@ -3,10 +3,10 @@
 //
 
 #include "AudioFile.h"
+#include "DiskerrorExceptions.h"
 
 #include <algorithm>
 #include <cstring>
-#include <stdexcept>
 
 namespace Diskerror {
 
@@ -134,7 +134,7 @@ void AudioFile::writeHeaders() {
 	//	fill = m_dataStart - 12 - allChunksSize() - 8 (alignment hdr) - dataHdrSize
 	int64_t fillPayload = m_dataStart - 12 - allChunksSize() - 8 - dataHdrSize;
 	if (fillPayload < 0)
-		throw runtime_error("Chunks exceed allocated header space.");
+		throw FormatError("Chunks exceed allocated header space.");
 
 	//	Write alignment chunk (JUNK for WAVE, PAD for AIFF)
 	if (m_type == AudioType::Wave) {
@@ -183,13 +183,13 @@ void AudioFile::writeHeaders() {
 //	Open existing file.
 AudioFile::AudioFile(const filesystem::path& path) : m_path(path) {
 	if (!filesystem::exists(m_path))
-		throw runtime_error("File not found.");
+		throw FileNotFound(m_path.string());
 	if (!filesystem::is_regular_file(m_path))
-		throw runtime_error("Not a regular file.");
+		throw NotARegularFile(m_path.string());
 
 	m_file.open(m_path.string(), ios_base::in | ios_base::out | ios_base::binary);
 	if (m_file.fail())
-		throw runtime_error("Failed to open file.");
+		throw FileOpenError("Failed to open file: " + m_path.string());
 
 	//	Read 12-byte container header
 	m_file.read(reinterpret_cast<char*>(&m_header), 12);
@@ -199,25 +199,25 @@ AudioFile::AudioFile(const filesystem::path& path) : m_path(path) {
 	switch (m_header.id) {
 		case 'RIFF':
 			if (m_header.type != 'WAVE')
-				throw runtime_error("Unknown RIFF media type.");
+				throw UnsupportedFormat("Unknown RIFF media type.");
 			m_type = AudioType::Wave;
 			break;
 
 		case 'RF64':
 			if (m_header.type != 'WAVE')
-				throw runtime_error("Unknown RF64 media type.");
+				throw UnsupportedFormat("Unknown RF64 media type.");
 			m_type = AudioType::Wave;
 			isRF64 = true;
 			break;
 
 		case 'FORM':
 			if (m_header.type != 'AIFF' && m_header.type != 'AIFC')
-				throw runtime_error("Unknown FORM media type.");
+				throw UnsupportedFormat("Unknown FORM media type.");
 			m_type = AudioType::Aiff;
 			break;
 
 		default:
-			throw runtime_error("Unknown or unsupported file type.");
+			throw UnsupportedFormat("Unknown or unsupported file type.");
 	}
 
 	//	RF64 data size will be set by ds64 chunk
@@ -303,7 +303,7 @@ AudioFile::AudioFile(const filesystem::path& path) : m_path(path) {
 	}
 
 	if (m_dataStart == 0)
-		throw runtime_error("No audio data chunk found in file.");
+		throw InvalidHeader("No audio data chunk found in file.");
 
 	m_file.clear(); // clear EOF flag
 }
@@ -314,10 +314,10 @@ AudioFile::AudioFile(const filesystem::path& path, AudioType type)
 	: m_path(path), m_type(type)
 {
 	if (filesystem::exists(m_path))
-		throw runtime_error("File already exists.");
+		throw FileExists(m_path.string());
 
 	if (m_type == AudioType::Unknown)
-		throw runtime_error("Must specify Wave or Aiff type.");
+		throw UsageError("Must specify Wave or Aiff type.");
 
 	if (m_type == AudioType::Wave) {
 		m_header.id    = 'RIFF';
@@ -409,7 +409,7 @@ size_t AudioFile::addChunk(const void* data) {
 	memcpy(&id, ptr, 4);
 
 	if (!isMultiAllowed(id) && findChunk(id).has_value())
-		throw runtime_error("Duplicate singleton chunk.");
+		throw UsageError("Duplicate singleton chunk.");
 
 	uint32_t payloadSize;
 	if (m_type == AudioType::Wave) {
@@ -468,7 +468,7 @@ void AudioFile::deleteChunk(size_t index) {
 
 streamsize AudioFile::read(char* buf, streamsize count) {
 	if (m_dataStart == 0)
-		throw runtime_error("File structure not established. Call flush() first.");
+		throw UsageError("File structure not established. Call flush() first.");
 
 	//	Clamp to available data
 	int64_t available = m_dataSize - m_readPos;
@@ -488,7 +488,7 @@ streamsize AudioFile::read(char* buf, streamsize count) {
 
 streamsize AudioFile::write(const char* buf, streamsize count) {
 	if (m_dataStart == 0)
-		throw runtime_error("File structure not established. Call flush() first.");
+		throw UsageError("File structure not established. Call flush() first.");
 
 	m_file.clear();
 	m_file.seekp(m_dataStart + m_writePos, ios_base::beg);
@@ -554,7 +554,7 @@ void AudioFile::flush() {
 		//	First flush: create the file and establish header structure.
 		m_file.open(m_path.string(), ios_base::in | ios_base::out | ios_base::binary | ios_base::trunc);
 		if (m_file.fail())
-			throw runtime_error("Failed to create file.");
+			throw FileOpenError("Failed to create file: " + m_path.string());
 
 		const int64_t dataHdrSize = (m_type == AudioType::Wave) ? 8 : 16;
 
@@ -573,7 +573,7 @@ void AudioFile::flush() {
 		const int64_t dataHdrSize = (m_type == AudioType::Wave) ? 8 : 16;
 		int64_t       overhead    = 12 + allChunksSize() + 8 + dataHdrSize;
 		if (overhead > m_dataStart)
-			throw runtime_error("Chunks exceed allocated header space.");
+			throw FormatError("Chunks exceed allocated header space.");
 	}
 
 	writeHeaders();
@@ -624,7 +624,7 @@ optional<size_t> AudioFile::findChunk(fourcc_t id) const {
 
 void AudioFile::setChunk(vector<uint8_t> blob) {
 	if (blob.size() < 8)
-		throw runtime_error("Chunk must be at least 8 bytes (ID + SIZE).");
+		throw FormatError("Chunk must be at least 8 bytes (ID + SIZE).");
 
 	fourcc_t id;
 	memcpy(&id, blob.data(), 4);

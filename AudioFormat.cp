@@ -5,10 +5,10 @@
 
 #include "AudioFormat.h"
 #include "AudioFile.h"
+#include "DiskerrorExceptions.h"
 
 #include <algorithm>
 #include <cstring>
-#include <stdexcept>
 
 namespace Diskerror {
 
@@ -65,7 +65,7 @@ AudioFormat::AudioFormat(const AudioFile& file) : m_type(file.type()), m_file(&f
 		}
 	}
 	else {
-		throw runtime_error("Cannot create AudioFormat for unknown audio type.");
+		throw UnsupportedFormat("Cannot create AudioFormat for unknown audio type.");
 	}
 }
 
@@ -77,7 +77,7 @@ AudioFormat::AudioFormat(const AudioFile& file) : m_type(file.type()), m_file(&f
 AudioFormat AudioFormat::fromWaveFmt(span<const uint8_t> blob) {
 	//	Minimum: 8 header + 16 payload = 24 bytes
 	if (blob.size() < 24)
-		throw runtime_error("fmt chunk too small.");
+		throw InvalidHeader("fmt chunk too small.");
 
 	AudioFormat af;
 	af.m_type = AudioType::Wave;
@@ -109,7 +109,7 @@ AudioFormat AudioFormat::fromWaveFmt(span<const uint8_t> blob) {
 AudioFormat AudioFormat::fromAiffComm(span<const uint8_t> blob) {
 	//	Minimum: 8 header + 18 payload = 26 bytes
 	if (blob.size() < 26)
-		throw runtime_error("COMM chunk too small.");
+		throw InvalidHeader("COMM chunk too small.");
 
 	AudioFormat af;
 	af.m_type = AudioType::Aiff;
@@ -192,7 +192,7 @@ vector<vector<uint8_t>> AudioFormat::toChunk() const {
 		chunks.push_back(toAiffComm());
 	}
 	else {
-		throw runtime_error("Cannot serialize AudioFormat for unknown audio type.");
+		throw UnsupportedFormat("Cannot serialize AudioFormat for unknown audio type.");
 	}
 
 	return chunks;

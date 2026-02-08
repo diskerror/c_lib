@@ -91,7 +91,7 @@ public:
 
 class StopNoError : public Exception {
 public:
-	explicit StopNoError() : Exception("") {}
+	using Exception::Exception;
 };
 
 } // namespace Diskerror
