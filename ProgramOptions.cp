@@ -3,6 +3,7 @@
 //
 
 #include "ProgramOptions.h"
+#include <format>
 #include <sstream>
 
 namespace Diskerror {
@@ -30,6 +31,7 @@ void ProgramOptions::run(int argc, char** argv) {
 		po::command_line_parser(argc, argv)
 			.options(all)
 			.positional(positional)
+			.allow_unregistered()
 			.run(),
 		vm);
 
