@@ -18,3 +18,4 @@ CLAUDE*
 *.dSYM/
 tests/test_audioformat
 tests/test_audiosamples
+build/
