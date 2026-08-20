@@ -29,8 +29,8 @@
 //     1       ...   payload  (dims × 1 byte)
 //     1+dims  2     scale    (float16, symmetric dequant multiplier)
 //
-// Endianness: all multi-byte values are little-endian. Float/half payloads
-// are host-order memcpy (targets LE hosts: Apple Silicon, x86-64).
+// Endianness: little-endian hosts only (ARM64, x86-64). Blob byte order
+// matches native memory layout; no byte-swapping is performed.
 
 #pragma once
 

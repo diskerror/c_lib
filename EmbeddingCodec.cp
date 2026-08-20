@@ -123,31 +123,17 @@ static inline float bf16_to_f32(uint16_t bits) {
 }
 
 // -----------------------------------------------------------------------
-// Little-endian (de)serialization helpers.
+// Blob read/write helpers. Target hosts are little-endian (ARM64, x86-64),
+// so the in-memory byte order matches the on-disk byte order and these are
+// plain memcpy. Using typed helpers keeps call sites readable.
 // -----------------------------------------------------------------------
-static inline void put_u16le(uint8_t* p, uint16_t v) {
-    p[0] = static_cast<uint8_t>(v & 0xff);
-    p[1] = static_cast<uint8_t>((v >> 8) & 0xff);
+static inline void put_u16(uint8_t* p, uint16_t v) { std::memcpy(p, &v, 2); }
+static inline uint16_t get_u16(const uint8_t* p) {
+    uint16_t v; std::memcpy(&v, p, 2); return v;
 }
-static inline uint16_t get_u16le(const uint8_t* p) {
-    return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
-}
-static inline void put_f32le(uint8_t* p, float f) {
-    uint32_t x;
-    std::memcpy(&x, &f, sizeof(x));
-    p[0] = static_cast<uint8_t>(x & 0xff);
-    p[1] = static_cast<uint8_t>((x >> 8) & 0xff);
-    p[2] = static_cast<uint8_t>((x >> 16) & 0xff);
-    p[3] = static_cast<uint8_t>((x >> 24) & 0xff);
-}
-static inline float get_f32le(const uint8_t* p) {
-    uint32_t x = static_cast<uint32_t>(p[0]) |
-                 (static_cast<uint32_t>(p[1]) << 8) |
-                 (static_cast<uint32_t>(p[2]) << 16) |
-                 (static_cast<uint32_t>(p[3]) << 24);
-    float f;
-    std::memcpy(&f, &x, sizeof(f));
-    return f;
+static inline void put_f32(uint8_t* p, float f) { std::memcpy(p, &f, 4); }
+static inline float get_f32(const uint8_t* p) {
+    float f; std::memcpy(&f, p, 4); return f;
 }
 
 // -----------------------------------------------------------------------
@@ -234,19 +220,19 @@ std::vector<uint8_t> encode(VectorType t, const std::vector<float>& v,
         }
 
         // f16 scale as 2-byte suffix after the int8 payload.
-        put_u16le(payload + dims, f32_to_f16(scale));
+        put_u16(payload + dims, f32_to_f16(scale));
     } else {
         switch (t) {
             case VectorType::F32:
-                for (int i = 0; i < dims; ++i) put_f32le(payload + i * 4, v[i]);
+                for (int i = 0; i < dims; ++i) put_f32(payload + i * 4, v[i]);
                 break;
             case VectorType::F16:
                 for (int i = 0; i < dims; ++i)
-                    put_u16le(payload + i * 2, f32_to_f16(v[i]));
+                    put_u16(payload + i * 2, f32_to_f16(v[i]));
                 break;
             case VectorType::BF16:
                 for (int i = 0; i < dims; ++i)
-                    put_u16le(payload + i * 2, f32_to_bf16(v[i]));
+                    put_u16(payload + i * 2, f32_to_bf16(v[i]));
                 break;
             case VectorType::INT8:
                 break;  // handled above; unreachable
@@ -273,7 +259,7 @@ bool decode(const void* blob, int blob_bytes, int expected_dims,
     if (t == VectorType::INT8) {
         // payload at byte 1, f16 scale as 2-byte suffix after payload
         const uint8_t* payload = p + 1;
-        float scale = f16_to_f32(get_u16le(payload + expected_dims));
+        float scale = f16_to_f32(get_u16(payload + expected_dims));
         for (int i = 0; i < expected_dims; ++i)
             out[i] = static_cast<float>(static_cast<int8_t>(payload[i])) * scale;
     } else {
@@ -281,15 +267,15 @@ bool decode(const void* blob, int blob_bytes, int expected_dims,
         switch (t) {
             case VectorType::F32:
                 for (int i = 0; i < expected_dims; ++i)
-                    out[i] = get_f32le(payload + i * 4);
+                    out[i] = get_f32(payload + i * 4);
                 break;
             case VectorType::F16:
                 for (int i = 0; i < expected_dims; ++i)
-                    out[i] = f16_to_f32(get_u16le(payload + i * 2));
+                    out[i] = f16_to_f32(get_u16(payload + i * 2));
                 break;
             case VectorType::BF16:
                 for (int i = 0; i < expected_dims; ++i)
-                    out[i] = bf16_to_f32(get_u16le(payload + i * 2));
+                    out[i] = bf16_to_f32(get_u16(payload + i * 2));
                 break;
             case VectorType::INT8:
                 break;  // unreachable
