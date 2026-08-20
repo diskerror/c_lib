@@ -14,9 +14,13 @@ namespace Diskerror::vector_codec {
 // to/from the packed on-disk representations.
 // -----------------------------------------------------------------------
 
-// IEEE 754 half. _Float16 is a native type on Apple Silicon (ARMv8.2-FP16)
-// and modern x86 toolchains; the compiler emits correct round-to-nearest
-// conversions, so we don't hand-roll the bit twiddling.
+// IEEE 754 half-precision (f16) conversions.
+// When _Float16 is available (Apple Silicon, GCC 12+/Clang 15+ on x86-64),
+// use the compiler's native type for correct round-to-nearest conversions.
+// Otherwise, fall back to manual bit manipulation.
+
+#ifdef __FLT16_MAX__  // compiler supports _Float16
+
 static inline uint16_t f32_to_f16(float f) {
     _Float16 h = static_cast<_Float16>(f);
     uint16_t bits;
@@ -28,6 +32,71 @@ static inline float f16_to_f32(uint16_t bits) {
     std::memcpy(&h, &bits, sizeof(h));
     return static_cast<float>(h);
 }
+
+#else  // manual bit manipulation fallback
+
+static inline uint16_t f32_to_f16(float f) {
+    uint32_t x;
+    std::memcpy(&x, &f, sizeof(x));
+    const uint32_t sign = (x >> 16) & 0x8000u;
+    // Strip sign, work with magnitude.
+    x &= 0x7fffffffu;
+    // NaN → keep a NaN (preserve sign, set a mantissa bit).
+    if (x > 0x7f800000u) return static_cast<uint16_t>(sign | 0x7e00u);
+    // Inf or too large → f16 infinity.
+    if (x >= 0x47800000u) return static_cast<uint16_t>(sign | 0x7c00u);
+    // Too small → flush to signed zero (no subnormal output for simplicity).
+    if (x < 0x33000000u) return static_cast<uint16_t>(sign);
+    // Subnormal f16 range.
+    if (x < 0x38800000u) {
+        // Re-bias into the subnormal range and round.
+        uint32_t mantissa = (x & 0x007fffffu) | 0x00800000u;
+        int shift = 113 - static_cast<int>(x >> 23);
+        mantissa >>= shift;
+        // Round to nearest even.
+        mantissa += 1;
+        mantissa >>= 1;
+        return static_cast<uint16_t>(sign | mantissa);
+    }
+    // Normal range: re-bias exponent (127→15), round mantissa to 10 bits.
+    // Round-to-nearest-even: add rounding bias based on truncated bits.
+    uint32_t rebias = x + 0xc8000000u;  // subtract (127-15) << 23 via unsigned wrap
+    uint32_t lsb = (rebias >> 13) & 1u;
+    rebias += 0x00000fffu + lsb;         // round to nearest even
+    return static_cast<uint16_t>(sign | (rebias >> 13));
+}
+
+static inline float f16_to_f32(uint16_t bits) {
+    const uint32_t sign = (static_cast<uint32_t>(bits) & 0x8000u) << 16;
+    uint32_t exponent   = (bits >> 10) & 0x1fu;
+    uint32_t mantissa   = bits & 0x03ffu;
+    uint32_t result;
+    if (exponent == 0) {
+        if (mantissa == 0) {
+            result = sign;  // ±0
+        } else {
+            // Subnormal: renormalize.
+            exponent = 1;
+            while ((mantissa & 0x0400u) == 0) {
+                mantissa <<= 1;
+                exponent -= 1;
+            }
+            mantissa &= 0x03ffu;
+            result = sign | ((exponent + 112u) << 23) | (mantissa << 13);
+        }
+    } else if (exponent == 31) {
+        // Inf or NaN: re-bias exponent to f32.
+        result = sign | 0x7f800000u | (mantissa << 13);
+    } else {
+        // Normal: re-bias exponent (15→127).
+        result = sign | ((exponent + 112u) << 23) | (mantissa << 13);
+    }
+    float f;
+    std::memcpy(&f, &result, sizeof(f));
+    return f;
+}
+
+#endif  // __FLT16_MAX__
 
 // bfloat16 = the high 16 bits of the float32 bit pattern. Same exponent range
 // as f32 (8 exponent bits), only 7 mantissa bits. We round-to-nearest-even
