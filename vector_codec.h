@@ -5,8 +5,8 @@
 // 384 B as int8. All in-memory math stays f32; this layer only governs the
 // stored BLOB.
 //
-// VERSION-TAGGED FORMAT (v2, Aug 2026)
-// ------------------------------------
+// VERSION-TAGGED FORMAT
+// ---------------------
 // The first byte of every blob is a version tag (1–255) that must match the
 // DB-wide `embedding_version` in the settings table. Version 0 is reserved
 // as a sentinel for empty/placeholder blobs that were never properly
@@ -16,8 +16,7 @@
 // is stale and must be re-embedded.
 //
 // The dtype, dimensions, and model identity are stored once in the settings
-// table — NOT repeated per blob. This eliminates the old 12-byte RV1
-// self-describing header.
+// table — NOT repeated per blob.
 //
 //   ALL TYPES:
 //     offset  size  field
@@ -30,14 +29,8 @@
 //     1       ...   payload  (dims × 1 byte)
 //     1+dims  2     scale    (float16, symmetric dequant multiplier)
 //
-// LEGACY BLOBS: the old format used a 12-byte header starting with 'R','V','1'.
-// Even older blobs were raw f16/f32 with no header at all. Both are detected
-// by decode() when the version byte doesn't match, and treated as stale —
-// the caller should re-embed them. decode() can still read legacy formats
-// for diagnostic purposes via decode_any().
-//
 // Endianness: all multi-byte values are little-endian. Float/half payloads
-// are host-order memcpy (Ragger targets LE hosts: Apple Silicon, x86-64).
+// are host-order memcpy (targets LE hosts: Apple Silicon, x86-64).
 
 #pragma once
 
@@ -96,12 +89,5 @@ int blob_version(const void* blob, int blob_bytes);
 // false is returned.
 bool decode(const void* blob, int blob_bytes, int expected_dims,
             VectorType t, std::vector<float>& out);
-
-// Decode any blob format — current version-tagged, old RV1-headered, or
-// ancient raw f16/f32. For diagnostic/migration use only. Returns true on
-// success. The `t` parameter is used as a hint for version-tagged blobs;
-// for legacy formats the dtype is inferred from blob size.
-bool decode_any(const void* blob, int blob_bytes, int expected_dims,
-                VectorType t, std::vector<float>& out);
 
 }  // namespace Diskerror::vector_codec

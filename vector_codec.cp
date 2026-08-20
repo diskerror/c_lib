@@ -1,6 +1,7 @@
-// vector_codec.cpp — see vector_codec.h for the on-disk format contract.
+// vector_codec.cp — see vector_codec.h for the on-disk format contract.
 
 #include "vector_codec.h"
+#include "VectorMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -81,14 +82,6 @@ static inline float get_f32le(const uint8_t* p) {
 }
 
 // -----------------------------------------------------------------------
-// Old RV1 header constants (for legacy decode only).
-// -----------------------------------------------------------------------
-static constexpr uint8_t kLegacyMagic0 = 'R';
-static constexpr uint8_t kLegacyMagic1 = 'V';
-static constexpr uint8_t kLegacyMagic2 = '1';
-static constexpr int kLegacyHeaderBytes = 12;
-
-// -----------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------
 
@@ -147,12 +140,9 @@ int expected_blob_size(VectorType t, int dims) {
 
 std::vector<uint8_t> encode(VectorType t, const std::vector<float>& v,
                             uint8_t version) {
-    const int dims   = static_cast<int>(v.size());
-    const int stride = payload_stride(t);
+    const int dims = static_cast<int>(v.size());
 
-    int total = expected_blob_size(t, dims);
-
-    std::vector<uint8_t> out(total);
+    std::vector<uint8_t> out(expected_blob_size(t, dims));
     uint8_t* p = out.data();
 
     // Version byte
@@ -163,8 +153,8 @@ std::vector<uint8_t> encode(VectorType t, const std::vector<float>& v,
 
     if (t == VectorType::INT8) {
         // Symmetric per-vector int8 quantization: scale = max|x| / 127.
-        float maxabs = 0.0f;
-        for (float x : v) maxabs = std::max(maxabs, std::fabs(x));
+        VectorMath<float> vm(v);
+        float maxabs = vm.max_mag();
         float scale = (maxabs > 0.0f) ? (maxabs / 127.0f) : 1.0f;
 
         const float inv = 1.0f / scale;
@@ -237,81 +227,6 @@ bool decode(const void* blob, int blob_bytes, int expected_dims,
         }
     }
     return true;
-}
-
-// Decode a legacy RV1-headered blob.
-static bool decode_legacy_rv1(const uint8_t* p, int blob_bytes, int dims,
-                              std::vector<float>& out) {
-    if (blob_bytes < kLegacyHeaderBytes) return false;
-    if (p[0] != kLegacyMagic0 || p[1] != kLegacyMagic1 || p[2] != kLegacyMagic2)
-        return false;
-
-    const auto t     = static_cast<VectorType>(p[3]);
-    const int  hdims = static_cast<int>(get_u16le(p + 6));
-    const float scale = get_f32le(p + 8);
-    if (hdims != dims) return false;
-
-    const int stride = payload_stride(t);
-    if (stride == 0) return false;
-    if (blob_bytes != kLegacyHeaderBytes + dims * stride) return false;
-
-    const uint8_t* payload = p + kLegacyHeaderBytes;
-    switch (t) {
-        case VectorType::F32:
-            for (int i = 0; i < dims; ++i) out[i] = get_f32le(payload + i * 4);
-            return true;
-        case VectorType::F16:
-            for (int i = 0; i < dims; ++i)
-                out[i] = f16_to_f32(get_u16le(payload + i * 2));
-            return true;
-        case VectorType::BF16:
-            for (int i = 0; i < dims; ++i)
-                out[i] = bf16_to_f32(get_u16le(payload + i * 2));
-            return true;
-        case VectorType::INT8:
-            for (int i = 0; i < dims; ++i)
-                out[i] = static_cast<float>(static_cast<int8_t>(payload[i])) * scale;
-            return true;
-    }
-    return false;
-}
-
-// Decode a legacy headerless raw blob: dims*2 => f16, dims*4 => f32.
-static bool decode_legacy_raw(const uint8_t* p, int blob_bytes, int dims,
-                              std::vector<float>& out) {
-    if (blob_bytes == dims * 2) {
-        for (int i = 0; i < dims; ++i)
-            out[i] = f16_to_f32(get_u16le(p + i * 2));
-        return true;
-    }
-    if (blob_bytes == dims * 4) {
-        for (int i = 0; i < dims; ++i)
-            out[i] = get_f32le(p + i * 4);
-        return true;
-    }
-    return false;
-}
-
-bool decode_any(const void* blob, int blob_bytes, int expected_dims,
-                VectorType t, std::vector<float>& out) {
-    out.assign(static_cast<size_t>(expected_dims), 0.0f);
-    if (blob == nullptr || expected_dims <= 0) return false;
-    const uint8_t* p = static_cast<const uint8_t*>(blob);
-
-    // Try current version-tagged format first (any version byte is fine here).
-    if (blob_bytes == expected_blob_size(t, expected_dims)) {
-        // Skip version byte, decode as current format.
-        return decode(blob, blob_bytes, expected_dims, t, out);
-    }
-
-    // Try old RV1 header format.
-    if (blob_bytes >= kLegacyHeaderBytes &&
-        p[0] == kLegacyMagic0 && p[1] == kLegacyMagic1 && p[2] == kLegacyMagic2) {
-        return decode_legacy_rv1(p, blob_bytes, expected_dims, out);
-    }
-
-    // Try ancient raw f16/f32.
-    return decode_legacy_raw(p, blob_bytes, expected_dims, out);
 }
 
 }  // namespace Diskerror::vector_codec
