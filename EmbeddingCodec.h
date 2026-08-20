@@ -1,4 +1,4 @@
-// vector_codec.h — on-disk embedding (de)serialization across storage dtypes.
+// EmbeddingCodec.h — on-disk embedding (de)serialization across storage dtypes.
 //
 // Embeddings are computed and compared in float32. On disk we can trade
 // precision for space: a 384-dim vector is 1536 B as f32, 768 B as f16/bf16,
@@ -40,7 +40,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Diskerror::vector_codec {
+namespace Diskerror::EmbeddingCodec {
 
 // Stable on-disk dtype codes — DO NOT renumber (referenced by settings table).
 enum class VectorType : uint8_t {
@@ -90,4 +90,4 @@ int blob_version(const void* blob, int blob_bytes);
 bool decode(const void* blob, int blob_bytes, int expected_dims,
             VectorType t, std::vector<float>& out);
 
-}  // namespace Diskerror::vector_codec
+}  // namespace Diskerror::EmbeddingCodec

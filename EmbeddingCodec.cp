@@ -1,13 +1,13 @@
-// vector_codec.cp — see vector_codec.h for the on-disk format contract.
+// EmbeddingCodec.cp — see EmbeddingCodec.h for the on-disk format contract.
 
-#include "vector_codec.h"
+#include "EmbeddingCodec.h"
 #include "VectorMath.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
-namespace Diskerror::vector_codec {
+namespace Diskerror::EmbeddingCodec {
 
 // -----------------------------------------------------------------------
 // Scalar dtype conversions. In-memory values are always f32; these convert
@@ -298,4 +298,4 @@ bool decode(const void* blob, int blob_bytes, int expected_dims,
     return true;
 }
 
-}  // namespace Diskerror::vector_codec
+}  // namespace Diskerror::EmbeddingCodec

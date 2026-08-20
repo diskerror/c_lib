@@ -1,4 +1,4 @@
-// double_metaphone.h — phonetic ("sounds-like") encoding.
+// DoubleMetaphone.h — phonetic ("sounds-like") encoding.
 //
 // Lawrence Philips' Double Metaphone algorithm (CUJ, June 2000): maps a word to
 // 1 or 2 four-character phonetic keys. Two keys are produced when a word has

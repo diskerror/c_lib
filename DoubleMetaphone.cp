@@ -1,4 +1,4 @@
-// double_metaphone.cpp — see double_metaphone.h.
+// DoubleMetaphone.cpp — see DoubleMetaphone.h.
 //
 // Faithful port of Lawrence Philips' Double Metaphone (CUJ, June 2000). The
 // structure mirrors the canonical reference implementation: a cursor walks the
@@ -8,7 +8,7 @@
 // This file intentionally has zero external dependencies so it can be unit-tested
 // in isolation and reused anywhere.
 
-#include "double_metaphone.h"
+#include "DoubleMetaphone.h"
 
 #include <array>
 #include <cctype>

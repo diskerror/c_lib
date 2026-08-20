@@ -1,8 +1,8 @@
-// Unit tests for Diskerror::vector_codec — round-trip fidelity across storage
+// Unit tests for Diskerror::EmbeddingCodec — round-trip fidelity across storage
 // dtypes and version-tagged format. main()-based per this project's test
 // convention.
 
-#include "vector_codec.h"
+#include "EmbeddingCodec.h"
 
 #include <cmath>
 #include <cstdint>
@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-using namespace Diskerror::vector_codec;
+using namespace Diskerror::EmbeddingCodec;
 
 static int failures = 0;
 
@@ -141,7 +141,7 @@ int main() {
         check(mae < 5e-3f, "int8 unit-norm round-trip within tolerance");
     }
 
-    if (failures == 0) std::printf("all vector_codec tests passed\n");
+    if (failures == 0) std::printf("all EmbeddingCodec tests passed\n");
     else               std::printf("%d vector_codec test(s) FAILED\n", failures);
     return failures == 0 ? 0 : 1;
 }

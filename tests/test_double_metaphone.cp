@@ -1,6 +1,6 @@
-// test_double_metaphone.cp — basic tests for Diskerror::double_metaphone/phonize.
+// test_DoubleMetaphone.cp — basic tests for Diskerror::double_metaphone/phonize.
 
-#include "double_metaphone.h"
+#include "DoubleMetaphone.h"
 
 #include <cstdio>
 #include <string>
