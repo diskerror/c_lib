@@ -11,7 +11,7 @@ file(GLOB_RECURSE CP_SOURCES *.cp)
 set_source_files_properties(${CP_SOURCES} PROPERTIES LANGUAGE CXX)
 
 # --- DoubleMetaphone -----------------------------------------------------
-add_library(diskerror_double_metaphone STATIC DoubleMetaphone.cp)
+add_library(diskerror_double_metaphone STATIC DoubleMetaphone.cp DoubleMetaphoneCapi.cp)
 
 # --- EmbeddingCodec ------------------------------------------------------
 add_library(diskerror_embedding_codec STATIC EmbeddingCodec.cp)
