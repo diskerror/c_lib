@@ -16,6 +16,19 @@ add_library(diskerror_double_metaphone STATIC DoubleMetaphone.cp DoubleMetaphone
 # --- EmbeddingCodec ------------------------------------------------------
 add_library(diskerror_embedding_codec STATIC EmbeddingCodec.cp)
 
+# --- Logger --------------------------------------------------------------
+add_library(diskerror_logger STATIC Logger.cp)
+
+# --- ProgramOptions ------------------------------------------------------
+if(APPLE)
+    set(BOOST_ROOT "/opt/local/libexec/boost/1.88" CACHE PATH "Boost root")
+    find_package(Boost 1.88 REQUIRED COMPONENTS program_options)
+else()
+    find_package(Boost 1.74 REQUIRED COMPONENTS program_options)
+endif()
+add_library(diskerror_program_options STATIC ProgramOptions.cp)
+target_link_libraries(diskerror_program_options PUBLIC Boost::program_options)
+
 # --- tests ---------------------------------------------------------------
 enable_testing()
 
