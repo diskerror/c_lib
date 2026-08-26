@@ -4,21 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build
 
+This project is test-only — there is no standalone library/install target. Downstream consumers (Ragger,
+SemanticSQLite) vendor it via CMake `FetchContent` and link the specific `add_library` targets they need
+(`diskerror_double_metaphone`, `diskerror_embedding_codec`, `diskerror_program_options`, `diskerror_logger`).
+
+To build and run tests locally:
+
 ```bash
-make          # Builds lib/libdiskerror_audio.a (static library)
+./build_tests.sh            # configure, build, run all tests via ctest
+./build_tests.sh --clean    # wipe build/ first
+./build_tests.sh --verbose  # full ctest output (-V)
 ```
 
-CMake is also available (primarily for test targets and for consumers that vendor this project):
+`build_tests.sh` wraps the CMake configure/build/ctest flags (Boost root on macOS, out-of-source build dir) so you
+don't need to remember them by hand: `cmake -B build ... && cmake --build build ... && ctest --test-dir build`.
 
-```bash
-cmake -B build && cmake --build build && ctest --test-dir build
-```
+**Requirements:** CMake >= 3.24, a C++23 compiler, Boost >= 1.74 (>= 1.88 on macOS via MacPorts at
+`/opt/local/libexec/boost/1.88`).
 
-The Makefile uses `g++` with `-std=c++23 -O3`. Include paths are configured for macOS MacPorts (
-`/opt/local/libexec/gcc15/libc++/include`, `/opt/local/libexec/boost/1.88/include`). Adjust `CXXFLAGS` in the Makefile
-for other environments.
-
-`AudioFile.cp`, `AudioFormat.cp`, and `AudioSamples.cp` are compiled into the library.
+`AudioFile.cp`, `AudioFormat.cp`, and `AudioSamples.cp` currently have no CMake library target of their own — they're
+compiled directly into their respective test executables (`test_audioformat`, `test_audiosamples`). There used to be
+a Makefile building `lib/libdiskerror_audio.a`, but nothing consumed it, so it was removed.
 
 ## Conventions
 
@@ -26,7 +32,8 @@ for other environments.
 - **Namespace**: All code lives in `Diskerror`
 - **Dependencies**: Boost (`endian/arithmetic.hpp`, `endian/conversion.hpp`, `cstdfloat.hpp`) and C++ standard library
   only
-- Object files go to `build/`, library output to `lib/`
+- Build output goes to `build/` (CMake out-of-source build dir); there is no `lib/` output — this repo has no
+  standalone library artifact
 
 ## Architecture
 

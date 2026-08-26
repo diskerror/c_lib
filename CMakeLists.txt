@@ -42,4 +42,41 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_executable(test_embedding_codec tests/test_embedding_codec.cp)
     target_link_libraries(test_embedding_codec PRIVATE diskerror_embedding_codec)
     add_test(NAME embedding_codec COMMAND test_embedding_codec)
+
+    add_executable(test_program_options tests/test_program_options.cp)
+    target_link_libraries(test_program_options PRIVATE diskerror_program_options)
+    add_test(NAME program_options COMMAND test_program_options)
+
+    add_executable(test_logger tests/test_logger.cp)
+    target_link_libraries(test_logger PRIVATE diskerror_logger)
+    add_test(NAME logger COMMAND test_logger)
+
+    # --- header-only utility tests (no library target required) ----------
+    add_executable(test_vector_math tests/test_vector_math.cp)
+    target_include_directories(test_vector_math PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME vector_math COMMAND test_vector_math)
+
+    add_executable(test_windowed_sinc tests/test_windowed_sinc.cp)
+    target_include_directories(test_windowed_sinc PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME windowed_sinc COMMAND test_windowed_sinc)
+
+    add_executable(test_big_float80 tests/test_big_float80.cp)
+    target_include_directories(test_big_float80 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(test_big_float80 PRIVATE Boost::boost)
+    add_test(NAME big_float80 COMMAND test_big_float80)
+
+    # --- AudioFile / AudioFormat / AudioSamples (compiled directly; these
+    # were previously only exercised via the Makefile's libdiskerror_audio.a,
+    # which has been removed — nothing outside this repo linked it) --------
+    add_executable(test_audioformat tests/test_audioformat.cp AudioFile.cp AudioFormat.cp)
+    target_include_directories(test_audioformat PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(test_audioformat PRIVATE Boost::boost)
+    add_test(NAME audioformat COMMAND test_audioformat
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+    add_executable(test_audiosamples tests/test_audiosamples.cp AudioFile.cp AudioFormat.cp AudioSamples.cp)
+    target_include_directories(test_audiosamples PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(test_audiosamples PRIVATE Boost::boost)
+    add_test(NAME audiosamples COMMAND test_audiosamples
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()

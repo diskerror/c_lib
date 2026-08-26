@@ -115,10 +115,12 @@ public:
 
         // 4. Handle Special Cases based on Exponent
         if (exp_bits == 0) {
-            // Zero or Denormal
-            // Matches original behavior: Set specific marker for 0
-            sign_exponent = 0xFFF0; 
-            mantissa = m; // Mantissa without integer bit
+            // Zero or Denormal. Preserve the sign bit (for -0.0) and use a
+            // zero exponent/mantissa so toDouble() reconstructs 0.0, not a
+            // denormal-scaled garbage value.
+            uint16_t sign = top_words & 0x8000;
+            sign_exponent = sign;
+            mantissa = 0;
             return;
         }
         
