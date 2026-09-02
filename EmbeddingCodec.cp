@@ -187,24 +187,25 @@ int payload_stride(VectorType t) {
     return 0;
 }
 
-int expected_blob_size(VectorType t, int dims) {
-    int prefix = 1;  // version byte
+int payload_size(VectorType t, int dims) {
     int suffix = (t == VectorType::INT8) ? 2 : 0;  // f16 scale at end for int8
-    return prefix + dims * payload_stride(t) + suffix;
+    return dims * payload_stride(t) + suffix;
+}
+
+int expected_blob_size(VectorType t, int dims, int offset) {
+    return offset + payload_size(t, dims);
 }
 
 std::vector<uint8_t> encode(VectorType t, const std::vector<float>& v,
-                            uint8_t version) {
+                            int offset, uint8_t version) {
     const int dims = static_cast<int>(v.size());
 
-    std::vector<uint8_t> out(expected_blob_size(t, dims));
-    uint8_t* p = out.data();
-
-    // Version byte
-    p[0] = version;
-
-    // All types: payload starts at byte 1.
-    uint8_t* payload = p + 1;
+    std::vector<uint8_t> out(offset + payload_size(t, dims));
+    if (offset > 0) {
+        std::memset(out.data(), 0, offset);
+        out[0] = version;
+    }
+    uint8_t* payload = out.data() + offset;
 
     if (t == VectorType::INT8) {
         // Symmetric per-vector int8 quantization: scale = max|x| / 127.
@@ -247,23 +248,19 @@ int blob_version(const void* blob, int blob_bytes) {
 }
 
 bool decode(const void* blob, int blob_bytes, int expected_dims,
-            VectorType t, std::vector<float>& out) {
+            VectorType t, std::vector<float>& out, int offset) {
     out.assign(static_cast<size_t>(expected_dims), 0.0f);
-    if (blob == nullptr || expected_dims <= 0 || blob_bytes < 1) return false;
-    const uint8_t* p = static_cast<const uint8_t*>(blob);
+    if (blob == nullptr || expected_dims <= 0 || blob_bytes <= offset) return false;
+    const uint8_t* payload = static_cast<const uint8_t*>(blob) + offset;
 
-    // Check size matches expected format (version byte already at p[0]).
-    const int expect_size = expected_blob_size(t, expected_dims);
-    if (blob_bytes != expect_size) return false;
+    const int expect_size = payload_size(t, expected_dims);
+    if (blob_bytes - offset != expect_size) return false;
 
     if (t == VectorType::INT8) {
-        // payload at byte 1, f16 scale as 2-byte suffix after payload
-        const uint8_t* payload = p + 1;
         float scale = f16_to_f32(get_u16(payload + expected_dims));
         for (int i = 0; i < expected_dims; ++i)
             out[i] = static_cast<float>(static_cast<int8_t>(payload[i])) * scale;
     } else {
-        const uint8_t* payload = p + 1;
         switch (t) {
             case VectorType::F32:
                 for (int i = 0; i < expected_dims; ++i)
