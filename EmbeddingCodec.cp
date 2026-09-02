@@ -281,4 +281,54 @@ bool decode(const void* blob, int blob_bytes, int expected_dims,
     return true;
 }
 
+bool decode_infer_dims(const void* blob, int blob_bytes, VectorType t,
+                       int offset, std::vector<float>& out, int min_dims) {
+    out.clear();
+    if (blob == nullptr || blob_bytes <= offset || offset < 0) return false;
+    const uint8_t* payload = static_cast<const uint8_t*>(blob) + offset;
+    const int payload_bytes = blob_bytes - offset;
+    const int stride = payload_stride(t);
+
+    if (t == VectorType::INT8) {
+        const int dims_with_scale = payload_bytes - 2;
+        const int dims_without    = payload_bytes;
+        int dims;
+        float scale;
+        if (dims_with_scale >= min_dims) {
+            dims = dims_with_scale;
+            scale = f16_to_f32(get_u16(payload + dims));
+            if (!(scale > 0.0f) || !std::isfinite(scale)) scale = 1.0f / 127.0f;
+        } else if (dims_without >= min_dims) {
+            dims = dims_without;
+            scale = 1.0f / 127.0f;  // unit-norm fallback
+        } else {
+            return false;
+        }
+        out.assign(static_cast<size_t>(dims), 0.0f);
+        for (int i = 0; i < dims; ++i)
+            out[i] = static_cast<float>(static_cast<int8_t>(payload[i])) * scale;
+        return true;
+    }
+
+    if (stride <= 0 || payload_bytes % stride != 0) return false;
+    const int dims = payload_bytes / stride;
+    if (dims < min_dims) return false;
+
+    out.assign(static_cast<size_t>(dims), 0.0f);
+    switch (t) {
+        case VectorType::F32:
+            for (int i = 0; i < dims; ++i) out[i] = get_f32(payload + i * 4);
+            break;
+        case VectorType::F16:
+            for (int i = 0; i < dims; ++i) out[i] = f16_to_f32(get_u16(payload + i * 2));
+            break;
+        case VectorType::BF16:
+            for (int i = 0; i < dims; ++i) out[i] = bf16_to_f32(get_u16(payload + i * 2));
+            break;
+        case VectorType::INT8:
+            break;  // unreachable
+    }
+    return true;
+}
+
 }  // namespace Diskerror::EmbeddingCodec

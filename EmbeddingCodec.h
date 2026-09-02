@@ -101,4 +101,26 @@ int blob_version(const void* blob, int blob_bytes);
 bool decode(const void* blob, int blob_bytes, int expected_dims,
             VectorType t, std::vector<float>& out, int offset = 0);
 
+// Decode a blob whose dimension count is NOT known ahead of time (no
+// settings table to consult — e.g. a SemanticSQLite user pointing the
+// codec at an arbitrary blob column). Dims are inferred from
+// blob_bytes - offset:
+//   - f32/f16/bf16: dims = payload_bytes / stride (payload_bytes must be
+//     an exact multiple of stride).
+//   - INT8: payload is `dims` bytes optionally followed by a 2-byte f16
+//     scale suffix. Since a bare payload and a payload+scale can both look
+//     "plausible", this prefers the with-scale interpretation whenever
+//     payload_bytes - 2 >= min_dims, falling back to the without-scale
+//     interpretation (implied scale 1/127, correct for unit-norm vectors)
+//     otherwise. `min_dims` defaults to 16 — real embedding models are
+//     never smaller, so this disambiguates without false positives in
+//     practice.
+// Clears and resizes `out` to the inferred dim count on success; clears
+// `out` to empty and returns false on failure (null blob, blob_bytes <=
+// offset, size doesn't cleanly fit the dtype, or too small to be
+// plausible).
+bool decode_infer_dims(const void* blob, int blob_bytes, VectorType t,
+                       int offset, std::vector<float>& out,
+                       int min_dims = 16);
+
 }  // namespace Diskerror::EmbeddingCodec

@@ -13,7 +13,7 @@ add_library(diskerror_double_metaphone STATIC DoubleMetaphone.cp DoubleMetaphone
 target_include_directories(diskerror_double_metaphone PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # --- EmbeddingCodec ------------------------------------------------------
-add_library(diskerror_embedding_codec STATIC EmbeddingCodec.cp)
+add_library(diskerror_embedding_codec STATIC EmbeddingCodec.cp EmbeddingCodecCapi.cp)
 target_include_directories(diskerror_embedding_codec PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # --- Logger --------------------------------------------------------------
