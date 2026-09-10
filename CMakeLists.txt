@@ -12,6 +12,10 @@ set_source_files_properties(${CP_SOURCES} PROPERTIES LANGUAGE CXX)
 add_library(diskerror_double_metaphone STATIC DoubleMetaphone.cp DoubleMetaphoneCapi.cp)
 target_include_directories(diskerror_double_metaphone PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# --- Stemmer (Snowball English stemmer) -----------------------------------
+add_library(diskerror_stemmer STATIC Stemmer.cp StemmerCapi.cp)
+target_include_directories(diskerror_stemmer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
 # --- EmbeddingCodec ------------------------------------------------------
 add_library(diskerror_embedding_codec STATIC EmbeddingCodec.cp EmbeddingCodecCapi.cp)
 target_include_directories(diskerror_embedding_codec PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -38,6 +42,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_executable(test_double_metaphone tests/test_double_metaphone.cp)
     target_link_libraries(test_double_metaphone PRIVATE diskerror_double_metaphone)
     add_test(NAME double_metaphone COMMAND test_double_metaphone)
+
+    add_executable(test_stemmer tests/test_stemmer.cp)
+    target_link_libraries(test_stemmer PRIVATE diskerror_stemmer)
+    add_test(NAME stemmer COMMAND test_stemmer)
 
     add_executable(test_embedding_codec tests/test_embedding_codec.cp)
     target_link_libraries(test_embedding_codec PRIVATE diskerror_embedding_codec)
