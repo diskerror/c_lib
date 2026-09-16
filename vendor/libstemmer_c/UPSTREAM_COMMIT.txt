@@ -1,0 +1,44 @@
+Snowball libstemmer_c — vendored pristine build artifact
+==========================================================
+
+Source:  https://snowballstem.org/dist/libstemmer_c-2.2.0.tar.gz
+Version: 2.2.0
+License: BSD-3-Clause (see COPYING)
+
+What's vendored:
+  - runtime/       Snowball VM runtime (api.c/api.h, header.h, utilities.c)
+  - include/       Public C API (libstemmer.h)
+  - libstemmer/    Dispatcher — renamed libstemmer_utf8.c -> libstemmer.c,
+                   modules_utf8.h -> modules.h (this project only needs the
+                   UTF-8 build variant; ISO_8859_*/KOI8_R modules and their
+                   dispatcher were dropped entirely)
+  - src_c/         Per-language stemmer modules, UTF-8 variants ONLY
+                   (stem_UTF_8_*.c/.h — 29 languages: arabic, armenian,
+                   basque, catalan, danish, dutch, english, finnish, french,
+                   german, greek, hindi, hungarian, indonesian, irish,
+                   italian, lithuanian, nepali, norwegian, porter,
+                   portuguese, romanian, russian, serbian, spanish,
+                   swedish, tamil, turkish, yiddish)
+
+What's NOT vendored (deliberately dropped, not needed):
+  - ISO_8859_1/2, KOI8_R module variants (non-UTF-8 encodings)
+  - examples/ (stemwords.c CLI demo)
+  - Perl/Python bindings, mkinc*.mak, Makefile (we build via c_lib's own
+    CMakeLists.txt, not upstream's build system)
+
+No source files were modified beyond the two renames above (for our
+one-variant-only layout) and the corresponding #include fix in
+libstemmer.c. Do not hand-edit anything under src_c/ or runtime/ — to
+upgrade, re-download a newer libstemmer_c release and re-run the same
+extract + rename + prune steps against a clean tree, then diff before
+committing.
+
+To refresh:
+  1. curl -LO https://snowballstem.org/dist/libstemmer_c-<version>.tar.gz
+  2. tar xzf libstemmer_c-<version>.tar.gz
+  3. Copy src_c/, runtime/, include/, COPYING, README, NEWS as-is.
+  4. Copy libstemmer/libstemmer_utf8.c -> libstemmer/libstemmer.c,
+     libstemmer/modules_utf8.h -> libstemmer/modules.h.
+  5. In the new libstemmer.c, fix the #include to "modules.h".
+  6. Delete every src_c/*.c/.h NOT matching *UTF_8* (non-UTF-8 encodings).
+  7. Update this file's Version line and rebuild + run test_stemmer_snowball.

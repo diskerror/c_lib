@@ -1,9 +1,10 @@
-// Stemmer.cp — English word stemming using the Porter algorithm
+// StemmerPorter.cp — English word stemming using the classic Porter
+// algorithm (1980).
 //
 // Based on Martin Porter's original stemming algorithm (1980).
 // A simpler, proven approach to English stemming that covers common suffixes.
 
-#include "Stemmer.h"
+#include "StemmerPorter.h"
 #include <algorithm>
 #include <cctype>
 

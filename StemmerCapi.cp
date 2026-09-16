@@ -1,7 +1,7 @@
-// StemmerCapi.cp — C API bridge to the C++ stemmer
+// StemmerCapi.cp — C API bridge to the C++ Porter stemmer
 
 #include "StemmerCapi.h"
-#include "Stemmer.h"
+#include "StemmerPorter.h"
 #include <cstring>
 #include <cstdlib>
 

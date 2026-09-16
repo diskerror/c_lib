@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(c_lib LANGUAGES CXX)
+project(c_lib LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,9 +12,28 @@ set_source_files_properties(${CP_SOURCES} PROPERTIES LANGUAGE CXX)
 add_library(diskerror_double_metaphone STATIC DoubleMetaphone.cp DoubleMetaphoneCapi.cp)
 target_include_directories(diskerror_double_metaphone PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# --- Stemmer (Snowball English stemmer) -----------------------------------
-add_library(diskerror_stemmer STATIC Stemmer.cp StemmerCapi.cp)
-target_include_directories(diskerror_stemmer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+# --- Stemmer: Porter (classic 1980 algorithm, English only) --------------
+add_library(diskerror_stemmer_porter STATIC StemmerPorter.cp StemmerCapi.cp)
+target_include_directories(diskerror_stemmer_porter PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+# --- Stemmer: Snowball (vendored libstemmer_c, UTF-8, multi-language) ----
+# See vendor/libstemmer_c/UPSTREAM_COMMIT.txt for provenance. Pristine C
+# sources compiled as C (not renamed to .cp — they're upstream, unedited
+# beyond the two file renames documented there); our own bridge is C++.
+file(GLOB SNOWBALL_C_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/runtime/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/libstemmer/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/src_c/*.c"
+)
+add_library(diskerror_stemmer_snowball STATIC
+    ${SNOWBALL_C_SOURCES}
+    StemmerSnowball.cp
+)
+target_include_directories(diskerror_stemmer_snowball PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(diskerror_stemmer_snowball PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/runtime"
+)
 
 # --- EmbeddingCodec ------------------------------------------------------
 add_library(diskerror_embedding_codec STATIC EmbeddingCodec.cp EmbeddingCodecCapi.cp)
@@ -43,9 +62,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     target_link_libraries(test_double_metaphone PRIVATE diskerror_double_metaphone)
     add_test(NAME double_metaphone COMMAND test_double_metaphone)
 
-    add_executable(test_stemmer tests/test_stemmer.cp)
-    target_link_libraries(test_stemmer PRIVATE diskerror_stemmer)
-    add_test(NAME stemmer COMMAND test_stemmer)
+    add_executable(test_stemmer_porter tests/test_stemmer_porter.cp)
+    target_link_libraries(test_stemmer_porter PRIVATE diskerror_stemmer_porter)
+    add_test(NAME stemmer_porter COMMAND test_stemmer_porter)
+
+    add_executable(test_stemmer_snowball tests/test_stemmer_snowball.cp)
+    target_link_libraries(test_stemmer_snowball PRIVATE diskerror_stemmer_snowball)
+    add_test(NAME stemmer_snowball COMMAND test_stemmer_snowball)
 
     add_executable(test_embedding_codec tests/test_embedding_codec.cp)
     target_link_libraries(test_embedding_codec PRIVATE diskerror_embedding_codec)

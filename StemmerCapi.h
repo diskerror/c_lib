@@ -1,5 +1,6 @@
-// StemmerCapi.h — plain-C bridge to the C++ stemmer (Stemmer.h/.cp),
-// so C translation units can call it without pulling in C++ headers.
+// StemmerCapi.h — plain-C bridge to the C++ Porter stemmer
+// (StemmerPorter.h/.cp), so C translation units can call it without
+// pulling in C++ headers.
 #pragma once
 
 #ifdef __cplusplus

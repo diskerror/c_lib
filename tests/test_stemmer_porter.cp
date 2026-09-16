@@ -1,6 +1,6 @@
-// test_stemmer.cp — Unit tests for the Porter English stemmer
+// test_stemmer_porter.cp — Unit tests for the classic Porter English stemmer
 
-#include "Stemmer.h"
+#include "StemmerPorter.h"
 #include <cassert>
 #include <iostream>
 #include <string>
