@@ -48,12 +48,43 @@ struct sb_stemmer* get_stemmer_locked(const std::string& language) {
     return s;
 }
 
+// Short (ISO-639-1-ish) code -> canonical Snowball long name. "porter" has
+// no natural short code and is intentionally absent here.
+const std::unordered_map<std::string, std::string>& short_name_map() {
+    static const std::unordered_map<std::string, std::string> m = {
+        {"ar", "arabic"},     {"hy", "armenian"},   {"eu", "basque"},
+        {"ca", "catalan"},    {"da", "danish"},     {"nl", "dutch"},
+        {"en", "english"},    {"fi", "finnish"},    {"fr", "french"},
+        {"de", "german"},     {"el", "greek"},      {"hi", "hindi"},
+        {"hu", "hungarian"},  {"id", "indonesian"}, {"ga", "irish"},
+        {"it", "italian"},    {"lt", "lithuanian"}, {"ne", "nepali"},
+        {"no", "norwegian"},  {"pt", "portuguese"}, {"ro", "romanian"},
+        {"ru", "russian"},    {"sr", "serbian"},    {"es", "spanish"},
+        {"sv", "swedish"},    {"ta", "tamil"},      {"tr", "turkish"},
+        {"yi", "yiddish"},
+    };
+    return m;
+}
+
+std::string lowercase(std::string_view s) {
+    std::string out(s);
+    std::transform(out.begin(), out.end(), out.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return out;
+}
+
 } // namespace
+
+std::string snowball_canonical_name(std::string_view language) {
+    std::string lang = lowercase(language);
+    auto it = short_name_map().find(lang);
+    return it != short_name_map().end() ? it->second : lang;
+}
 
 std::string stem_snowball(std::string_view word, std::string_view language) {
     if (word.empty()) return "";
 
-    std::string lang(language);
+    std::string lang = snowball_canonical_name(language);
     std::string w(word);
     // Snowball algorithms expect lowercase input for case-sensitive
     // scripts; this is a no-op for scripts without case.
@@ -76,7 +107,7 @@ std::string stem_snowball(std::string_view word, std::string_view language) {
 }
 
 bool snowball_language_supported(std::string_view language) {
-    std::string lang(language);
+    std::string lang = snowball_canonical_name(language);
     const char** names = sb_stemmer_list();
     for (; *names != nullptr; ++names) {
         if (lang == *names) return true;

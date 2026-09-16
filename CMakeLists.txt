@@ -13,7 +13,7 @@ add_library(diskerror_double_metaphone STATIC DoubleMetaphone.cp DoubleMetaphone
 target_include_directories(diskerror_double_metaphone PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # --- Stemmer: Porter (classic 1980 algorithm, English only) --------------
-add_library(diskerror_stemmer_porter STATIC StemmerPorter.cp StemmerCapi.cp)
+add_library(diskerror_stemmer_porter STATIC StemmerPorter.cp)
 target_include_directories(diskerror_stemmer_porter PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # --- Stemmer: Snowball (vendored libstemmer_c, UTF-8, multi-language) ----
@@ -33,6 +33,18 @@ target_include_directories(diskerror_stemmer_snowball PUBLIC "${CMAKE_CURRENT_SO
 target_include_directories(diskerror_stemmer_snowball PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/runtime"
+)
+
+# --- Stemmer: combined plain-C bridge (Porter + Snowball) -----------------
+# One C API surface (diskerror_stem_en, diskerror_stem_snowball,
+# diskerror_snowball_language_supported) over both stemmers above, for
+# plain-C consumers (e.g. SemanticSQLite's ext_functions.c). Replaces the
+# old Porter-only StemmerCapi.
+add_library(diskerror_stemmer_capi STATIC StemmerCapi.cp)
+target_include_directories(diskerror_stemmer_capi PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(diskerror_stemmer_capi PUBLIC
+    diskerror_stemmer_porter
+    diskerror_stemmer_snowball
 )
 
 # --- EmbeddingCodec ------------------------------------------------------
@@ -69,6 +81,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_executable(test_stemmer_snowball tests/test_stemmer_snowball.cp)
     target_link_libraries(test_stemmer_snowball PRIVATE diskerror_stemmer_snowball)
     add_test(NAME stemmer_snowball COMMAND test_stemmer_snowball)
+
+    add_executable(test_stemmer_capi tests/test_stemmer_capi.cp)
+    target_link_libraries(test_stemmer_capi PRIVATE diskerror_stemmer_capi diskerror_double_metaphone)
+    add_test(NAME stemmer_capi COMMAND test_stemmer_capi)
 
     add_executable(test_embedding_codec tests/test_embedding_codec.cp)
     target_link_libraries(test_embedding_codec PRIVATE diskerror_embedding_codec)

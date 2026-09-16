@@ -34,7 +34,19 @@ namespace Diskerror {
 // assuming English.
 std::string stem_snowball(std::string_view word, std::string_view language = "english");
 
-// True if `language` is a recognised Snowball algorithm name.
+// True if `language` is a recognised Snowball algorithm name (accepts
+// either a canonical long name, e.g. "english", or a short ISO-639-1-ish
+// code, e.g. "en" — see snowball_canonical_name()).
 bool snowball_language_supported(std::string_view language);
+
+// Maps a short language code (e.g. "en", "fr", "de") to its canonical
+// Snowball algorithm name (e.g. "english", "french", "german"),
+// case-insensitively. If `language` is already a canonical long name, or
+// isn't a recognised short code, it is returned unchanged (lowercased) —
+// callers should still check snowball_language_supported() on the result.
+// "porter" has no short code (it names the original-Porter variant bundled
+// with Snowball, not a natural language) and is only reachable by its long
+// name.
+std::string snowball_canonical_name(std::string_view language);
 
 } // namespace Diskerror
