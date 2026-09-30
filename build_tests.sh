@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Configure, build, and run c_lib's test suite via CMake/CTest.
+# Configure, build, and run c_lib's test suite via CMake/CTest (Debug, in build-debug/).
 #
 # CMake needs a couple of extra params beyond plain `make` (out-of-source
 # build dir, Boost root on macOS), so this wraps them in one command:
 #
 #   ./build_tests.sh            # configure (if needed), build, run tests
-#   ./build_tests.sh --clean    # wipe build/ first, then configure+build+run
+#   ./build_tests.sh --clean    # wipe build-debug/ first, then configure+build+run
 #   ./build_tests.sh --verbose  # pass -V to ctest for full test output
 #
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-BUILD_DIR="build"
+BUILD_DIR="build-debug"   # debug/test tree; consumers link build/ (build_libs.sh)
 CTEST_ARGS=()
 
 for arg in "$@"; do

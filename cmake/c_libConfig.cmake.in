@@ -1,0 +1,11 @@
+# c_lib build-tree package config (generated). Consumers:
+#   find_package(c_lib @PROJECT_VERSION_MAJOR@.@PROJECT_VERSION_MINOR@ CONFIG PATHS ../c_lib/build NO_DEFAULT_PATH)
+include(CMakeFindDependencyMacro)
+if(APPLE AND NOT BOOST_ROOT)
+    set(BOOST_ROOT "@BOOST_ROOT@")
+endif()
+find_dependency(Boost COMPONENTS program_options)
+find_dependency(Threads)
+include("${CMAKE_CURRENT_LIST_DIR}/c_libTargets.cmake")
+set(c_lib_TARGETS @C_LIB_TARGETS@)
+set(c_lib_SQLITE_VERSION "@SQLITE_VENDOR_VERSION@")

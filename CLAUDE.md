@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build
 
-This project is test-only — there is no standalone library/install target. Downstream consumers (Ragger,
-SemanticSQLite) vendor it via CMake `FetchContent` and link the specific `add_library` targets they need
-(`diskerror_double_metaphone`, `diskerror_embedding_codec`, `diskerror_program_options`, `diskerror_logger`).
+c_lib builds static libraries (RelWithDebInfo, `-O3 -g`) into `build/lib/` via `./build_libs.sh`; consumers
+(Ragger, SemanticSQLite via `cmake/UseCLib.cmake`; audio-fir-filter via its Makefile) link those prebuilt archives
+and never clean `build/`. Targets: `diskerror_sqlite3` (vendored SQLite, FKs default ON), `diskerror_audio`,
+`diskerror_double_metaphone`, `diskerror_stemmer_{porter,snowball,capi}`, `diskerror_embedding_codec`,
+`diskerror_logger`, `diskerror_program_options`. Layout: headers in root, `.cp` in `src/`, upstream code in `vendor/`.
 
 To build and run tests locally:
 
@@ -22,9 +24,7 @@ don't need to remember them by hand: `cmake -B build ... && cmake --build build 
 **Requirements:** CMake >= 3.24, a C++23 compiler, Boost >= 1.74 (>= 1.88 on macOS via MacPorts at
 `/opt/local/libexec/boost/1.88`).
 
-`AudioFile.cp`, `AudioFormat.cp`, and `AudioSamples.cp` currently have no CMake library target of their own — they're
-compiled directly into their respective test executables (`test_audioformat`, `test_audiosamples`). There used to be
-a Makefile building `lib/libdiskerror_audio.a`, but nothing consumed it, so it was removed.
+Tests (`build_tests.sh`) build Debug into `build-debug/`, separate from the consumer tree.
 
 ## Conventions
 
@@ -32,8 +32,7 @@ a Makefile building `lib/libdiskerror_audio.a`, but nothing consumed it, so it w
 - **Namespace**: All code lives in `Diskerror`
 - **Dependencies**: Boost (`endian/arithmetic.hpp`, `endian/conversion.hpp`, `cstdfloat.hpp`) and C++ standard library
   only
-- Build output goes to `build/` (CMake out-of-source build dir); there is no `lib/` output — this repo has no
-  standalone library artifact
+- Consumer libraries: `build/lib/*.a`; tests: `build-debug/`
 
 ## Architecture
 
