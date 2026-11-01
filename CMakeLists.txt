@@ -79,36 +79,25 @@ if(APPLE)
     target_link_libraries(diskerror_sqlite3 PUBLIC "-framework CoreFoundation")
 endif()
 
-# --- DoubleMetaphone -------------------------------------------------------
-add_library(diskerror_double_metaphone STATIC src/DoubleMetaphone.cp src/DoubleMetaphoneCapi.cp)
-target_include_directories(diskerror_double_metaphone PUBLIC "${C_LIB_INCLUDE}")
-
-# --- Stemmer: Porter (classic 1980 algorithm, English only) ----------------
-add_library(diskerror_stemmer_porter STATIC src/StemmerPorter.cp)
-target_include_directories(diskerror_stemmer_porter PUBLIC "${C_LIB_INCLUDE}")
-
-# --- Stemmer: Snowball (vendored libstemmer_c, UTF-8, multi-language) ------
-# See vendor/libstemmer_c/UPSTREAM_COMMIT.txt for provenance. Pristine C
-# sources compiled as C; our own bridge is C++.
+# --- Search: DoubleMetaphone, Porter + Snowball stemmers, and their -------
+# plain-C bridges. Snowball is vendored libstemmer_c (UTF-8,
+# multi-language; see vendor/libstemmer_c/UPSTREAM_COMMIT.txt). Pristine C
+# sources compiled as C; our own code is C++.
 file(GLOB SNOWBALL_C_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/runtime/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/libstemmer/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/src_c/*.c"
 )
-add_library(diskerror_stemmer_snowball STATIC ${SNOWBALL_C_SOURCES} src/StemmerSnowball.cp)
-target_include_directories(diskerror_stemmer_snowball PUBLIC "${C_LIB_INCLUDE}")
-target_include_directories(diskerror_stemmer_snowball PRIVATE
+add_library(diskerror_search STATIC
+    ${SNOWBALL_C_SOURCES}
+    src/DoubleMetaphone.cp src/DoubleMetaphoneCapi.cp
+    src/StemmerPorter.cp src/StemmerSnowball.cp src/StemmerCapi.cp)
+target_include_directories(diskerror_search PUBLIC "${C_LIB_INCLUDE}")
+target_include_directories(diskerror_search PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libstemmer_c/runtime"
 )
-
-# --- Stemmer: combined plain-C bridge (Porter + Snowball) ------------------
-# One C API (diskerror_stem_en, diskerror_stem_snowball,
-# diskerror_snowball_language_supported) for plain-C consumers.
-add_library(diskerror_stemmer_capi STATIC src/StemmerCapi.cp)
-target_include_directories(diskerror_stemmer_capi PUBLIC "${C_LIB_INCLUDE}")
-target_link_libraries(diskerror_stemmer_capi PUBLIC diskerror_stemmer_porter diskerror_stemmer_snowball)
 
 # --- EmbeddingCodec --------------------------------------------------------
 add_library(diskerror_embedding_codec STATIC src/EmbeddingCodec.cp src/EmbeddingCodecCapi.cp)
@@ -132,10 +121,7 @@ target_link_libraries(diskerror_audio PUBLIC Boost::boost)
 
 set(C_LIB_TARGETS
     diskerror_sqlite3
-    diskerror_double_metaphone
-    diskerror_stemmer_porter
-    diskerror_stemmer_snowball
-    diskerror_stemmer_capi
+    diskerror_search
     diskerror_embedding_codec
     diskerror_logger
     diskerror_program_options
@@ -160,19 +146,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
 
     add_executable(test_double_metaphone tests/test_double_metaphone.cp)
-    target_link_libraries(test_double_metaphone PRIVATE diskerror_double_metaphone)
+    target_link_libraries(test_double_metaphone PRIVATE diskerror_search)
     add_test(NAME double_metaphone COMMAND test_double_metaphone)
 
     add_executable(test_stemmer_porter tests/test_stemmer_porter.cp)
-    target_link_libraries(test_stemmer_porter PRIVATE diskerror_stemmer_porter)
+    target_link_libraries(test_stemmer_porter PRIVATE diskerror_search)
     add_test(NAME stemmer_porter COMMAND test_stemmer_porter)
 
     add_executable(test_stemmer_snowball tests/test_stemmer_snowball.cp)
-    target_link_libraries(test_stemmer_snowball PRIVATE diskerror_stemmer_snowball)
+    target_link_libraries(test_stemmer_snowball PRIVATE diskerror_search)
     add_test(NAME stemmer_snowball COMMAND test_stemmer_snowball)
 
     add_executable(test_stemmer_capi tests/test_stemmer_capi.cp)
-    target_link_libraries(test_stemmer_capi PRIVATE diskerror_stemmer_capi diskerror_double_metaphone)
+    target_link_libraries(test_stemmer_capi PRIVATE diskerror_search)
     add_test(NAME stemmer_capi COMMAND test_stemmer_capi)
 
     add_executable(test_embedding_codec tests/test_embedding_codec.cp)

@@ -44,10 +44,9 @@ logging, CLI option parsing, and a vendored SQLite build. It builds static libra
 
 | Library | Contents |
 |---|---|
-| `diskerror_sqlite3` | SQLite 3.54.0, FKs default ON |
+| `diskerror_sqlite3` | SQLite 3.54.1, FKs default ON |
 | `diskerror_audio` | AudioFile, AudioFormat, AudioSamples |
-| `diskerror_double_metaphone` | DoubleMetaphone (+ C API) |
-| `diskerror_stemmer_porter` / `_snowball` / `_capi` | stemmers (+ combined C API) |
+| `diskerror_search` | DoubleMetaphone, Porter + Snowball stemmers (+ C APIs) |
 | `diskerror_embedding_codec` | EmbeddingCodec (+ C API) |
 | `diskerror_logger` | Logger |
 | `diskerror_program_options` | ProgramOptions (Boost) |

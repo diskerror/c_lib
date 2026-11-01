@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 c_lib builds static libraries (RelWithDebInfo, `-O3 -g`) into `build/lib/` via `./build_libs.sh`; consumers
 (Ragger, SemanticSQLite via `cmake/UseCLib.cmake`; audio-fir-filter via its Makefile) link those prebuilt archives
 and never clean `build/`. Targets: `diskerror_sqlite3` (vendored SQLite, FKs default ON), `diskerror_audio`,
-`diskerror_double_metaphone`, `diskerror_stemmer_{porter,snowball,capi}`, `diskerror_embedding_codec`,
+`diskerror_search` (double metaphone, stemmers), `diskerror_embedding_codec`,
 `diskerror_logger`, `diskerror_program_options`. Layout: headers in root, `.cp` in `src/`, upstream code in `vendor/`.
 
 To build and run tests locally:
